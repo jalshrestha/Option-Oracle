@@ -25,20 +25,27 @@ class AlpacaMarketDataClient:
     """Real-time market data client using Alpaca API with yfinance fallback"""
     
     def __init__(self):
-        self.alpaca_data_client = StockHistoricalDataClient(
-            api_key=settings.alpaca_api_key,
-            secret_key=settings.alpaca_secret_key
-        )
-        self.alpaca_trading_client = TradingClient(
-            api_key=settings.alpaca_api_key,
-            secret_key=settings.alpaca_secret_key,
-            paper=True  # Using paper trading
-        )
+        self.alpaca_data_client = None
+        self.alpaca_trading_client = None
+        if settings.alpaca_api_key and settings.alpaca_secret_key:
+            try:
+                self.alpaca_data_client = StockHistoricalDataClient(
+                    api_key=settings.alpaca_api_key,
+                    secret_key=settings.alpaca_secret_key
+                )
+                self.alpaca_trading_client = TradingClient(
+                    api_key=settings.alpaca_api_key,
+                    secret_key=settings.alpaca_secret_key,
+                    paper=True  # Using paper trading
+                )
+                logger.info("Alpaca market data client initialized")
+            except Exception as e:
+                logger.warning(f"Alpaca client init failed: {e} — falling back to yfinance only")
+        else:
+            logger.warning("Alpaca API keys not configured — using yfinance fallback only")
         # Cache: symbol -> (yf.Ticker, created_at_timestamp)
         self._ticker_cache: Dict[str, tuple] = {}
         self._ticker_cache_ttl = 300  # 5 minutes
-
-        logger.info("Alpaca market data client initialized")
 
     async def _get_ticker(self, symbol: str) -> "yf.Ticker":
         """Return a cached yfinance Ticker, refreshing after TTL expires."""
@@ -53,6 +60,8 @@ class AlpacaMarketDataClient:
         """Get current quote for symbol"""
         try:
             # Try Alpaca first for price data
+            if not self.alpaca_data_client:
+                raise ValueError("Alpaca not configured")
             request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
             quotes = self.alpaca_data_client.get_stock_latest_quote(request)
             
@@ -166,6 +175,8 @@ class AlpacaMarketDataClient:
                 start_date = datetime.now() - timedelta(days=30)
             
             # Try Alpaca first
+            if not self.alpaca_data_client:
+                raise ValueError("Alpaca not configured")
             request = StockBarsRequest(
                 symbol_or_symbols=symbol,
                 timeframe=timeframe,

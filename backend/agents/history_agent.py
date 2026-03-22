@@ -14,7 +14,7 @@ class HistoricalPatternAgent(BaseAgent):
     """AI agent specializing in historical pattern analysis"""
     
     def __init__(self, client):
-        super().__init__(client, "Historical Pattern", "gpt-4o")
+        super().__init__(client, "Historical Pattern")
         
     def _get_system_instructions(self) -> str:
         return """

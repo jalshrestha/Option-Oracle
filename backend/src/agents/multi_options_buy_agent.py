@@ -6,11 +6,10 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from openai import OpenAI
-
 from src.agents.buy_agent import OptionsBuyAgent
 from config.settings import settings
 from config.logging import get_agents_logger
+from src.llm.factory import create_llm_client
 
 logger = get_agents_logger()
 
@@ -19,7 +18,7 @@ class MultiOptionsBuyAgent:
     """Agent for analyzing hot stocks and creating optimized options portfolio"""
     
     def __init__(self):
-        self.openai_client = OpenAI(api_key=settings.openai_api_key)
+        self._llm = create_llm_client("large")
         self.single_buy_agent = OptionsBuyAgent()
         
     async def analyze_best_options_portfolio(
@@ -175,15 +174,13 @@ class MultiOptionsBuyAgent:
         """
         
         try:
-            response = await asyncio.to_thread(
-                self.openai_client.chat.completions.create,
-                model="gpt-4o",
+            ai_response = await self._llm.complete(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=2000,
+                json_mode=True,
             )
-            
-            ai_response = response.choices[0].message.content.strip()
+            ai_response = ai_response.strip()
             
             # Parse AI response
             if '```json' in ai_response:

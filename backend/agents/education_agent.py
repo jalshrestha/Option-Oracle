@@ -14,7 +14,7 @@ class EducationAgent(BaseAgent):
     """AI agent specializing in educational content generation"""
     
     def __init__(self, client):
-        super().__init__(client, "Education", "gpt-4o-mini")
+        super().__init__(client, "Education")
         
     def _get_system_instructions(self) -> str:
         return """

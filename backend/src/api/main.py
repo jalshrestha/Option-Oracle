@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
 def _register_middleware(app: FastAPI) -> None:
     """Register all middleware in reverse call-stack order (last = outermost)."""
     # TrustedHost: only in production; "0.0.0.0" is not a valid hostname
-    if settings.ENV == "production":
+    if settings.env == "production":
         allowed = getattr(settings, "allowed_hosts", ["localhost", "127.0.0.1"])
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed)
 
@@ -335,22 +335,10 @@ async def get_hot_stocks():
 
         orchestrator = get_orchestrator()
         
-        # Initialize web scraper agent with OpenAI
+        # Web scraper uses OpenAI Responses API (browsing) — only available with OpenAI
         openai_client = None
-        try:
-            from config.settings import settings
-            if hasattr(settings, 'openai_api_key') and settings.openai_api_key:
-                openai_client = OpenAI(api_key=settings.openai_api_key)
-                logger.info("✅ OpenAI client initialized for web scraping")
-            else:
-                logger.warning("⚠️ OpenAI API key not found in settings")
-        except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client: {e}")
-            # Fallback to environment variable
-            if os.getenv("OPENAI_API_KEY"):
-                openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                logger.info("✅ OpenAI client initialized from env variable")
-        
+        if settings.openai_api_key:
+            openai_client = OpenAI(api_key=settings.openai_api_key)
         web_scraper = get_web_scraper_agent(openai_client)
         
         # Get REAL trending stocks from StockTwits

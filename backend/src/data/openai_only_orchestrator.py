@@ -11,8 +11,8 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from openai import AsyncOpenAI
 import re
+from src.llm.factory import create_llm_client
 
 from config.settings import settings
 from config.logging import get_data_logger
@@ -241,8 +241,8 @@ class OptionsProfitCalculatorAPI:
 class OpenAIMarketIntelligence:
     """OpenAI-powered market intelligence using web search"""
     
-    def __init__(self, openai_api_key: str):
-        self.client = AsyncOpenAI(api_key=openai_api_key)
+    def __init__(self):
+        self.client = create_llm_client("large")
         self.options_api = OptionsProfitCalculatorAPI()
         self.alpaca_client = AlpacaMarketDataClient()
     
@@ -331,16 +331,15 @@ class OpenAIMarketIntelligence:
             }}
             """
             
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": "You are a professional options flow analyst with expertise in detecting institutional positioning and unusual activity."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2
+                temperature=0.2,
+                json_mode=True,
             )
-            
-            analysis = self._extract_json_response(response.choices[0].message.content)
+            analysis = self._extract_json_response(content)
             analysis['raw_options_data'] = options_data  # Include raw data
             
             return analysis
@@ -377,16 +376,15 @@ class OpenAIMarketIntelligence:
         """
         
         try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": "You are a financial news analyst specializing in market-moving events and their impact on options trading."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2
+                temperature=0.2,
+                json_mode=True,
             )
-            
-            return self._extract_json_response(response.choices[0].message.content)
+            return self._extract_json_response(content)
             
         except Exception as e:
             logger.error(f"Error in news intelligence for {symbol}: {e}")
@@ -420,16 +418,15 @@ class OpenAIMarketIntelligence:
         """
         
         try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": "You are a social media sentiment analyst specializing in retail investor sentiment and options trading discussions."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3
+                temperature=0.3,
+                json_mode=True,
             )
-            
-            return self._extract_json_response(response.choices[0].message.content)
+            return self._extract_json_response(content)
             
         except Exception as e:
             logger.error(f"Error in social intelligence for {symbol}: {e}")
@@ -474,16 +471,15 @@ class OpenAIMarketIntelligence:
             }}
             """
             
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": "You are a technical analyst specializing in options trading and technical indicators."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2
+                temperature=0.2,
+                json_mode=True,
             )
-            
-            analysis = self._extract_json_response(response.choices[0].message.content)
+            analysis = self._extract_json_response(content)
             analysis['raw_technical_data'] = technical_data  # Include raw data
             
             return analysis
@@ -525,16 +521,15 @@ class OpenAIMarketIntelligence:
         """
         
         try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": "You are a comprehensive market strategist with expertise in equity analysis and options market dynamics."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2
+                temperature=0.2,
+                json_mode=True,
             )
-            
-            return self._extract_json_response(response.choices[0].message.content)
+            return self._extract_json_response(content)
             
         except Exception as e:
             logger.error(f"Error in market outlook for {symbol}: {e}")
@@ -599,7 +594,7 @@ async def test_openai_orchestrator():
     """Test OpenAI-only orchestrator with real options data"""
     print("🧠 Testing OpenAI-Only Market Intelligence System")
     
-    intelligence = OpenAIMarketIntelligence(settings.openai_api_key)
+    intelligence = OpenAIMarketIntelligence()
     
     symbol = "AAPL"
     print(f"📊 Getting comprehensive intelligence for {symbol}...")

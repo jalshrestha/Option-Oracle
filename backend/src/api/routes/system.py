@@ -389,6 +389,26 @@ async def get_system_logs(
         raise HTTPException(status_code=500, detail="Failed to get system logs")
 
 
+@router.get("/llm-provider")
+async def get_llm_provider() -> Dict[str, Any]:
+    """Get the active LLM provider and model configuration (read-only)."""
+    if settings.llm_provider == "openai":
+        large_model = settings.openai_model_large
+        small_model = settings.openai_model_small
+    else:
+        large_model = settings.gemini_model_large
+        small_model = settings.gemini_model_small
+
+    return {
+        "provider": settings.llm_provider,
+        "models": {
+            "large": large_model,
+            "small": small_model,
+        },
+        "note": "To switch providers, update LLM_PROVIDER in .env and restart the backend.",
+    }
+
+
 @router.post("/maintenance")
 async def trigger_maintenance_task(
     task_type: str,

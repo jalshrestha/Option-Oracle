@@ -24,7 +24,7 @@ except ImportError:
     torch = None
     nn = None
 
-from openai import OpenAI
+from src.llm.factory import create_llm_client
 from config.settings import settings
 from config.logging import get_data_logger
 
@@ -485,7 +485,7 @@ class RealRLTradingAgent:
     """RL agent using real agent results and market observations"""
     
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.client = create_llm_client("small")
         self.environment = RealTradingEnvironment()
         
         # RL components (if PyTorch available)
@@ -668,21 +668,15 @@ Provide analysis in JSON format:
 """
         
         try:
-            response = await asyncio.create_task(
-                asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "You are analyzing real market data and agent results for options trading."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.1,
-                    max_tokens=800
-                )
+            response_text = await self.client.complete(
+                messages=[
+                    {"role": "system", "content": "You are analyzing real market data and agent results for options trading."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=800,
+                json_mode=True,
             )
-            
-            # Parse JSON response
-            response_text = response.choices[0].message.content
             import re
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             

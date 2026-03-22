@@ -6,7 +6,6 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from .base_agent import BaseAgent
 from config.logging import get_agents_logger
-from openai import AsyncOpenAI
 import asyncio
 import json
 import re
@@ -18,8 +17,7 @@ class SentimentAnalysisAgent(BaseAgent):
     """AI agent specializing in market sentiment analysis using real web search data"""
     
     def __init__(self, client):
-        super().__init__(client, "Sentiment Analysis", "gpt-4o")
-        self.openai_client = AsyncOpenAI(api_key=client.api_key) if hasattr(client, 'api_key') else None
+        super().__init__(client, "Sentiment Analysis")
         
     def _get_system_instructions(self) -> str:
         return """
@@ -130,8 +128,8 @@ OUTPUT FORMAT (JSON):
         try:
             logger.info(f"Starting REAL sentiment analysis for {symbol}")
             
-            if not self.openai_client:
-                logger.error("OpenAI client not available for sentiment analysis")
+            if not self.client:
+                logger.error("LLM client not available for sentiment analysis")
                 return self._get_fallback_sentiment(symbol)
             
             # Get current date for search queries
@@ -213,8 +211,7 @@ OUTPUT FORMAT (JSON):
             }}
             """
             
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {
                         "role": "system",
@@ -226,10 +223,9 @@ OUTPUT FORMAT (JSON):
                     }
                 ],
                 max_tokens=1000,
-                temperature=0.1
+                temperature=0.1,
+                json_mode=True,
             )
-            
-            content = response.choices[0].message.content.strip()
             return self._parse_json_response(content)
             
         except Exception as e:
@@ -262,8 +258,7 @@ OUTPUT FORMAT (JSON):
             }}
             """
             
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {
                         "role": "system",
@@ -275,10 +270,9 @@ OUTPUT FORMAT (JSON):
                     }
                 ],
                 max_tokens=800,
-                temperature=0.1
+                temperature=0.1,
+                json_mode=True,
             )
-            
-            content = response.choices[0].message.content.strip()
             return self._parse_json_response(content)
             
         except Exception as e:
@@ -309,8 +303,7 @@ OUTPUT FORMAT (JSON):
             }}
             """
             
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {
                         "role": "system",
@@ -322,10 +315,9 @@ OUTPUT FORMAT (JSON):
                     }
                 ],
                 max_tokens=600,
-                temperature=0.1
+                temperature=0.1,
+                json_mode=True,
             )
-            
-            content = response.choices[0].message.content.strip()
             return self._parse_json_response(content)
             
         except Exception as e:
@@ -358,17 +350,15 @@ OUTPUT FORMAT (JSON):
             Return in the exact JSON format specified in the system instructions.
             """
             
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": self.system_instructions},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=1200,
-                temperature=0.2
+                temperature=0.2,
+                json_mode=True,
             )
-            
-            content = response.choices[0].message.content.strip()
             return self._parse_json_response(content)
             
         except Exception as e:

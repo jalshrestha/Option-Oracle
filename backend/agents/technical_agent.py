@@ -15,7 +15,7 @@ class TechnicalAnalysisAgent(BaseAgent):
     """AI agent specializing in technical analysis for options trading"""
     
     def __init__(self, client):
-        super().__init__(client, "Technical Analysis", "gpt-4o")
+        super().__init__(client, "Technical Analysis")
         
     def _get_system_instructions(self) -> str:
         """Get system instructions for technical analysis"""

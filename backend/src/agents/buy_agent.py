@@ -6,11 +6,10 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from openai import OpenAI
-
 from src.data.alpaca_client import AlpacaMarketDataClient
 from config.settings import settings
 from config.logging import get_agents_logger
+from src.llm.factory import create_llm_client
 
 logger = get_agents_logger()
 
@@ -19,7 +18,7 @@ class OptionsBuyAgent:
     """Agent for analyzing and buying individual options"""
     
     def __init__(self):
-        self.openai_client = OpenAI(api_key=settings.openai_api_key)
+        self._llm = create_llm_client("large")
         self.alpaca_client = AlpacaMarketDataClient()
         
     async def analyze_option_opportunity(self, symbol: str, budget: float, user_preferences: Dict[str, Any]) -> Dict[str, Any]:
@@ -162,15 +161,13 @@ class OptionsBuyAgent:
         """
         
         try:
-            response = await asyncio.to_thread(
-                self.openai_client.chat.completions.create,
-                model="gpt-4o",
+            ai_response = await self._llm.complete(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
-                max_tokens=1500
+                max_tokens=1500,
+                json_mode=True,
             )
-            
-            ai_response = response.choices[0].message.content.strip()
+            ai_response = ai_response.strip()
             
             # Parse AI response
             if '```json' in ai_response:

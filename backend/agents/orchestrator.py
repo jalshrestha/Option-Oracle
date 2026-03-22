@@ -6,10 +6,9 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-import openai
-from openai import OpenAI
 from config.settings import settings
 from config.logging import get_agents_logger
+from src.llm.factory import create_llm_client
 from config.database import AsyncSessionLocal
 from config.constants import (
     BASE_WEIGHTS,
@@ -24,13 +23,14 @@ class OptionsOracleOrchestrator:
     """Master orchestrator for AI-driven options trading analysis"""
     
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self._large_client = create_llm_client("large")
+        self._small_client = create_llm_client("small")
         self.agents = {}
         self.initialized = False
-        
+
         # Agent weights - dynamically adjusted based on market scenario
         self.base_weights = BASE_WEIGHTS.copy()
-        
+
         logger.info("Options Oracle Orchestrator initialized")
     
     async def initialize(self) -> bool:
@@ -47,15 +47,15 @@ class OptionsOracleOrchestrator:
             from .education_agent import EducationAgent
             from .buy_agent import BuyAgent
             
-            # Initialize agents
+            # Initialize agents — large client for complex analysis, small for lightweight tasks
             self.agents = {
-                'technical': TechnicalAnalysisAgent(self.client),
-                'sentiment': SentimentAnalysisAgent(self.client),
-                'flow': OptionsFlowAgent(self.client),
-                'history': HistoricalPatternAgent(self.client),
-                'risk': RiskManagementAgent(self.client),
-                'education': EducationAgent(self.client),
-                'buy': BuyAgent(self.client)
+                'technical': TechnicalAnalysisAgent(self._large_client),
+                'sentiment': SentimentAnalysisAgent(self._large_client),
+                'flow': OptionsFlowAgent(self._small_client),
+                'history': HistoricalPatternAgent(self._large_client),
+                'risk': RiskManagementAgent(self._large_client),
+                'education': EducationAgent(self._small_client),
+                'buy': BuyAgent(self._large_client),
             }
             
             # Initialize each agent

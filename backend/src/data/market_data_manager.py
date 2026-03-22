@@ -21,7 +21,7 @@ class MarketDataManager:
     
     def __init__(self):
         self.alpaca_client = AlpacaMarketDataClient()
-        self.ai_intelligence = OpenAIMarketIntelligence(settings.openai_api_key)
+        self.ai_intelligence = OpenAIMarketIntelligence()
         self.cache_ttl = 300  # 5 minutes cache
         
     async def get_comprehensive_data(self, symbol: str) -> Dict[str, Any]:

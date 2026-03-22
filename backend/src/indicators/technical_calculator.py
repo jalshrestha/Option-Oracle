@@ -6,8 +6,14 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from stock_indicators import indicators
-from stock_indicators.indicators.common import Quote
+try:
+    from stock_indicators import indicators
+    from stock_indicators.indicators.common import Quote
+    STOCK_INDICATORS_AVAILABLE = True
+except (ImportError, Exception):
+    indicators = None
+    Quote = None
+    STOCK_INDICATORS_AVAILABLE = False
 from config.logging import get_data_logger
 
 logger = get_data_logger()

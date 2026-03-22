@@ -53,8 +53,10 @@ def check_environment():
         missing_required.append("DATABASE_URL")
     
     # Check optional settings
-    if not settings.openai_api_key:
+    if settings.llm_provider == "openai" and not settings.openai_api_key:
         missing_optional.append("OPENAI_API_KEY")
+    elif settings.llm_provider == "gemini" and not settings.gemini_api_key:
+        missing_optional.append("GEMINI_API_KEY")
     if not settings.jigsawstack_api_key:
         missing_optional.append("JIGSAWSTACK_API_KEY")
     if not settings.alpaca_api_key:
@@ -124,7 +126,7 @@ def main():
         logger.error("Environment check failed. Exiting.")
         sys.exit(1)
     
-    logger.info(f"Environment: {settings.app_env}")
+    logger.info(f"Environment: {settings.env}")
     logger.info(f"Debug Mode: {settings.app_debug}")
     logger.info(f"Host: {settings.app_host}")
     logger.info(f"Port: {settings.app_port}")

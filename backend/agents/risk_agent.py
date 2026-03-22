@@ -14,7 +14,7 @@ class RiskManagementAgent(BaseAgent):
     """AI agent specializing in risk management and strike selection"""
     
     def __init__(self, client):
-        super().__init__(client, "Risk Management", "gpt-4o")
+        super().__init__(client, "Risk Management")
         
     def _get_system_instructions(self) -> str:
         return """

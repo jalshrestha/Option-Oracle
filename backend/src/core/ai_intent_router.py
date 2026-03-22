@@ -6,9 +6,9 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from openai import OpenAI
 from config.settings import settings
 from config.logging import get_api_logger
+from src.llm.factory import create_llm_client
 
 logger = get_api_logger()
 
@@ -17,7 +17,7 @@ class AIIntentRouter:
     """AI-powered router that uses OpenAI tool calling for intelligent request routing"""
     
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.client = create_llm_client("large")
         
         # Define available tools/functions
         self.available_tools = [
@@ -268,60 +268,53 @@ You can call multiple tools if needed.
                 {"role": "user", "content": user_message}
             ]
             
-            # Make OpenAI call with tool calling
-            response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                model="gpt-4o",
+            # Make LLM call with tool calling
+            llm_result = await self.client.complete_with_tools(
                 messages=messages,
                 tools=self.available_tools,
-                tool_choice="auto",
-                temperature=0.1
+                temperature=0.1,
             )
-            
-            # Process the response
-            message = response.choices[0].message
-            
-            # Check if OpenAI wants to call tools
-            if message.tool_calls:
+
+            # Check if LLM wants to call tools
+            if llm_result.tool_calls:
                 # Step 2: Execute the tool calls
                 tool_results = []
-                for tool_call in message.tool_calls:
-                    result = await self._execute_tool_call(tool_call)
+                for tc in llm_result.tool_calls:
+                    result = await self._execute_tool_call(tc)
                     tool_results.append(result)
-                
-                # Step 3: Let OpenAI format the final response
+
+                # Step 3: Format the final response
                 final_response = await self._format_final_response(
-                    user_message, message, tool_results
+                    user_message, llm_result, tool_results
                 )
-                
+
                 # Extract symbol from tool results if available
                 symbol = None
                 for result in tool_results:
                     if result.get("symbol"):
                         symbol = result["symbol"]
                         break
-                
+
                 response_data = {
                     "response": final_response,
-                    "intent": self._determine_intent_from_tools(message.tool_calls),
-                    "tools_called": [tc.function.name for tc in message.tool_calls],
-                    "tool_results": tool_results,  # Include tool results for frontend
-                    "confidence": 0.9,  # High confidence when using tools
+                    "intent": self._determine_intent_from_tools(llm_result.tool_calls),
+                    "tools_called": [tc.name for tc in llm_result.tool_calls],
+                    "tool_results": tool_results,
+                    "confidence": 0.9,
                     "formatted": True,
                     "timestamp": datetime.now().isoformat()
                 }
-                
-                # Add symbol if found
+
                 if symbol:
                     response_data["symbol"] = symbol
-                    
+
                 return response_data
-            
+
             else:
                 # No tools needed - direct response
                 return {
-                    "response": message.content,
-                    "intent": "GENERAL_CHAT", 
+                    "response": llm_result.content or "",
+                    "intent": "GENERAL_CHAT",
                     "tools_called": [],
                     "confidence": 0.7,
                     "formatted": True,
@@ -334,8 +327,8 @@ You can call multiple tools if needed.
     
     async def _execute_tool_call(self, tool_call) -> Dict[str, Any]:
         """Execute a single tool call and return results"""
-        function_name = tool_call.function.name
-        arguments = json.loads(tool_call.function.arguments)
+        function_name = tool_call.name
+        arguments = tool_call.arguments
         
         logger.info(f"Executing tool: {function_name} with args: {arguments}")
         
@@ -577,15 +570,11 @@ Instructions:
 Make the response human-readable and engaging!
 """
 
-            response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                model="gpt-4o",
+            return await self.client.complete(
                 messages=[{"role": "user", "content": format_prompt}],
                 temperature=0.3,
-                max_tokens=1000
+                max_tokens=1000,
             )
-            
-            return response.choices[0].message.content
             
         except Exception as e:
             logger.error(f"Response formatting failed: {e}")
@@ -615,7 +604,7 @@ Make the response human-readable and engaging!
         if not tool_calls:
             return "GENERAL_CHAT"
         
-        tool_names = [tc.function.name for tc in tool_calls]
+        tool_names = [tc.name for tc in tool_calls]
         
         if "analyze_stock" in tool_names:
             return "STOCK_ANALYSIS"

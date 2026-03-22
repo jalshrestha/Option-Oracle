@@ -10,9 +10,9 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 
-from openai import OpenAI
 from config.settings import settings
 from config.logging import get_data_logger
+from src.llm.factory import create_llm_client
 
 logger = get_data_logger()
 
@@ -31,9 +31,8 @@ class SentimentResult:
 class OpenAISentimentAnalyzer:
     """Advanced sentiment analysis using OpenAI GPT models"""
     
-    def __init__(self, model: str = "gpt-4o-mini"):
-        self.client = OpenAI(api_key=settings.openai_api_key)
-        self.model = model
+    def __init__(self):
+        self.client = create_llm_client("small")
         self.analysis_count = 0
         self.success_rate = 0.0
         
@@ -48,7 +47,7 @@ class OpenAISentimentAnalyzer:
             'dump', 'correction', 'breakdown', 'resistance', 'weak', 'negative'
         ]
         
-        logger.info(f"OpenAI Sentiment Analyzer initialized with {model}")
+        logger.info(f"Sentiment Analyzer initialized with {self.client.model_name}")
     
     async def analyze_text(self, text: str, context: str = "") -> SentimentResult:
         """Analyze sentiment of given text"""
@@ -56,26 +55,23 @@ class OpenAISentimentAnalyzer:
         try:
             prompt = self._create_sentiment_prompt(text, context)
             
-            response = await asyncio.create_task(
-                asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "system", 
-                            "content": "You are a financial sentiment analysis expert specialized in options trading and market psychology."
-                        },
-                        {
-                            "role": "user", 
-                            "content": prompt
-                        }
-                    ],
-                    temperature=0.1,
-                    max_tokens=1000
-                )
+            content = await self.client.complete(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a financial sentiment analysis expert specialized in options trading and market psychology."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=1000,
+                json_mode=True,
             )
-            
-            result = self._parse_sentiment_response(response.choices[0].message.content, text)
+
+            result = self._parse_sentiment_response(content, text)
             
             # Validate result
             validated_result = self._validate_sentiment(result, text)

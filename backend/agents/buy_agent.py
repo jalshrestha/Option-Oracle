@@ -7,7 +7,6 @@ import json
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from openai import OpenAI
 from config.logging import get_agents_logger
 from config.settings import settings
 from config.constants import (
@@ -56,8 +55,8 @@ class PositionRecommendation:
 class BuyAgent(BaseAgent):
     """Intelligent buy agent for paper trading execution"""
     
-    def __init__(self, client: OpenAI):
-        super().__init__(client, "Buy Agent", "gpt-4o")
+    def __init__(self, client):
+        super().__init__(client, "Buy Agent")
         self.alpaca_client = None
         self.options_api = None
         self._initialize_trading_clients()

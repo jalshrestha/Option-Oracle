@@ -7,7 +7,6 @@ import json
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from openai import OpenAI
 from config.logging import get_agents_logger
 from config.settings import settings
 
@@ -50,13 +49,8 @@ class MultiStockResult:
 class MultiStockAnalysisAgent(BaseAgent):
     """Agent for analyzing multiple stocks and selecting the best option"""
     
-    def __init__(self, openai_client: OpenAI):
-        super().__init__(
-            client=openai_client,
-            name="Multi-Stock Analysis Agent",
-            model="gpt-4o"
-        )
-        self.openai_client = openai_client
+    def __init__(self, client):
+        super().__init__(client=client, name="Multi-Stock Analysis Agent")
     
     def _get_system_instructions(self) -> str:
         """Get system instructions for the multi-stock analysis agent"""
@@ -87,7 +81,7 @@ Always provide comprehensive analysis with clear reasoning for your recommendati
         
         try:
             # Extract budget and criteria from query
-            budget_info = self._extract_budget_and_criteria(query)
+            budget_info = await self._extract_budget_and_criteria(query)
             
             # Get list of stocks to analyze
             stocks_to_analyze = await self._get_stocks_to_analyze(query, context)
@@ -186,7 +180,7 @@ Always provide comprehensive analysis with clear reasoning for your recommendati
                 }
             }
     
-    def _extract_budget_and_criteria(self, query: str) -> Dict[str, Any]:
+    async def _extract_budget_and_criteria(self, query: str) -> Dict[str, Any]:
         """Extract budget and investment criteria from query"""
         try:
             # Use OpenAI to extract budget and criteria
@@ -213,17 +207,16 @@ Respond with JSON format:
 If no budget is specified, default to $1000.
 """
 
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": "You are a financial query parser. Always respond with valid JSON only."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=200
+                max_tokens=200,
+                json_mode=True,
             )
-            
-            result = json.loads(response.choices[0].message.content.strip())
+            result = json.loads(content.strip())
             
             # Ensure budget is a number
             if isinstance(result.get('budget'), str):
@@ -291,17 +284,16 @@ Respond with a JSON array of stock symbols:
 ["AAPL", "MSFT", "TSLA", "NVDA", "SPY", "QQQ", "AMD", "META", "GOOGL", "AMZN"]
 """
 
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.client.complete(
                 messages=[
                     {"role": "system", "content": "You are a stock selection expert. Always respond with valid JSON array only."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=100
+                max_tokens=100,
+                json_mode=True,
             )
-            
-            stocks = json.loads(response.choices[0].message.content.strip())
+            stocks = json.loads(content.strip())
             return stocks[:12]  # Limit to 12 stocks
             
         except Exception as e:
@@ -404,11 +396,11 @@ Respond with a JSON array of stock symbols:
             from agents.risk_agent import RiskManagementAgent
             
             # Initialize agents
-            technical_agent = TechnicalAnalysisAgent(self.openai_client)
-            sentiment_agent = SentimentAnalysisAgent(self.openai_client)
-            flow_agent = OptionsFlowAgent(self.openai_client)
-            history_agent = HistoricalPatternAgent(self.openai_client)
-            risk_agent = RiskManagementAgent(self.openai_client)
+            technical_agent = TechnicalAnalysisAgent(self.client)
+            sentiment_agent = SentimentAnalysisAgent(self.client)
+            flow_agent = OptionsFlowAgent(self.client)
+            history_agent = HistoricalPatternAgent(self.client)
+            risk_agent = RiskManagementAgent(self.client)
             
             # Run all agents in parallel
             tasks = [

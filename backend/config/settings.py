@@ -7,7 +7,7 @@ the application will refuse to start rather than silently misconfigure.
 """
 from typing import List, Literal, Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,15 +26,29 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
-    # Required — application refuses to start without these
+    # Database
     # ------------------------------------------------------------------
     database_url: str = "postgresql+asyncpg://oracle:oracle_dev@postgres:5432/option_oracle"
-    openai_api_key: str
 
     # ------------------------------------------------------------------
-    # Optional — reduced functionality when absent
+    # LLM Provider Selection
+    # Switch between providers by setting LLM_PROVIDER in .env
     # ------------------------------------------------------------------
+    llm_provider: Literal["openai", "gemini"] = "openai"
+
+    # OpenAI — required when llm_provider="openai"
+    openai_api_key: Optional[str] = None
+    openai_model_large: str = "gpt-4o"
+    openai_model_small: str = "gpt-4o-mini"
+
+    # Gemini — required when llm_provider="gemini"
     gemini_api_key: Optional[str] = None
+    gemini_model_large: str = "gemini-2.0-flash"
+    gemini_model_small: str = "gemini-2.0-flash-lite"
+
+    # ------------------------------------------------------------------
+    # Optional external APIs
+    # ------------------------------------------------------------------
     jigsawstack_api_key: Optional[str] = None
     alpaca_api_key: Optional[str] = None
     alpaca_secret_key: Optional[str] = None
@@ -74,14 +88,13 @@ class Settings(BaseSettings):
     paper_trading_balance: float = 100_000.0
 
     # ------------------------------------------------------------------
-    # Validators — fail fast with clear messages
+    # Validators
     # ------------------------------------------------------------------
 
     @field_validator("database_url")
     @classmethod
     def database_url_must_be_postgresql(cls, v: str) -> str:
         if v.startswith("postgresql://"):
-            # Auto-upgrade to asyncpg driver
             return v.replace("postgresql://", "postgresql+asyncpg://", 1)
         if not v.startswith("postgresql+asyncpg://"):
             raise ValueError(
@@ -90,24 +103,37 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("openai_api_key")
+    @field_validator("openai_api_key", mode="before")
     @classmethod
-    def openai_key_must_start_with_sk(cls, v: str) -> str:
-        if not v.startswith("sk-"):
+    def validate_openai_key_format(cls, v: Optional[str]) -> Optional[str]:
+        if v and not v.startswith("sk-"):
             raise ValueError(
                 "OPENAI_API_KEY must start with 'sk-'. "
                 "Get your key from https://platform.openai.com/api-keys"
             )
-        return v
+        return v or None
 
     @field_validator("app_port")
     @classmethod
     def port_must_be_in_valid_range(cls, v: int) -> int:
         if not (1024 <= v <= 65535):
-            raise ValueError(
-                f"APP_PORT must be between 1024 and 65535, got: {v}"
-            )
+            raise ValueError(f"APP_PORT must be between 1024 and 65535, got: {v}")
         return v
+
+    @model_validator(mode="after")
+    def validate_provider_credentials(self) -> "Settings":
+        """Ensure the selected provider has its API key set."""
+        if self.llm_provider == "openai" and not self.openai_api_key:
+            raise ValueError(
+                "OPENAI_API_KEY is required when LLM_PROVIDER=openai. "
+                "Set it in your .env file or switch to LLM_PROVIDER=gemini."
+            )
+        if self.llm_provider == "gemini" and not self.gemini_api_key:
+            raise ValueError(
+                "GEMINI_API_KEY is required when LLM_PROVIDER=gemini. "
+                "Get your key from https://aistudio.google.com/app/apikey"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------

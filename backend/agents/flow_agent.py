@@ -14,7 +14,7 @@ class OptionsFlowAgent(BaseAgent):
     """AI agent specializing in options flow analysis"""
     
     def __init__(self, client):
-        super().__init__(client, "Options Flow", "gpt-4o-mini")  # Fallback to OpenAI for now
+        super().__init__(client, "Options Flow")
         
     def _get_system_instructions(self) -> str:
         return """

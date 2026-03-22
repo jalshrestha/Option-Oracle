@@ -100,10 +100,10 @@ async def get_current_session(
 # ---------------------------------------------------------------------------
 
 def get_analysis_service(db: AsyncSession = Depends(get_db)) -> AnalysisService:
-    # Lazy import avoids circular dependency: main → dependencies → main
-    from src.api.main import get_orchestrator
+    # OptionsOracleOrchestrator has analyze_stock() which AnalysisService expects
+    from agents.orchestrator import OptionsOracleOrchestrator
     signal_repo = TradingSignalRepository(db)
-    return AnalysisService(get_orchestrator(), signal_repo)
+    return AnalysisService(OptionsOracleOrchestrator(), signal_repo)
 
 
 def get_trading_service(db: AsyncSession = Depends(get_db)) -> TradingService:

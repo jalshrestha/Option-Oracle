@@ -9,7 +9,6 @@ import json
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from loguru import logger
-from openai import OpenAI
 import os
 import pandas as pd
 
@@ -30,10 +29,10 @@ from src.data.market_data_manager import MarketDataManager
 from src.indicators.technical_calculator import TechnicalIndicatorsCalculator
 
 class QueryClassifier:
-    """Intelligent query classifier using OpenAI to understand user intent"""
-    
-    def __init__(self, openai_client):
-        self.openai_client = openai_client
+    """Intelligent query classifier using LLM to understand user intent"""
+
+    def __init__(self, llm_client):
+        self.llm_client = llm_client
         self.available_agents = {
             'technical_analysis': 'Analyzes technical indicators, chart patterns, RSI, MACD, support/resistance levels, trends, and momentum',
             'sentiment_analysis': 'Analyzes market sentiment, news sentiment, social media buzz, and overall market mood',
@@ -103,19 +102,16 @@ Example responses:
 - "show me RSI" → {{"technical_analysis": 0.9}}
 """
 
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.llm_client.complete(
                 messages=[
                     {"role": "system", "content": "You are an expert financial query classifier. Always respond with valid JSON only."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=500
+                max_tokens=500,
+                json_mode=True,
             )
-            
-            # Parse the JSON response
-            content = response.choices[0].message.content.strip()
-            logger.info(f"OpenAI classification response: {content}")
+            logger.info(f"LLM classification response: {content}")
             
             # Try to parse as JSON
             try:
@@ -140,8 +136,8 @@ Example responses:
     async def extract_stock_symbol(self, query: str) -> Optional[str]:
         """Intelligently extract stock symbol from query using OpenAI"""
         try:
-            if not self.openai_client:
-                logger.error("OpenAI client not available for symbol extraction")
+            if not self.llm_client:
+                logger.error("LLM client not available for symbol extraction")
                 return None
 
             prompt = f"""
@@ -163,17 +159,15 @@ Examples:
 
 Symbol:"""
 
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            symbol = await self.llm_client.complete(
                 messages=[
                     {"role": "system", "content": "You are a financial symbol extractor. Always respond with just the symbol or NONE."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=10
+                max_tokens=10,
             )
-
-            symbol = response.choices[0].message.content.strip().upper()
+            symbol = symbol.strip().upper()
 
             if symbol == "NONE" or len(symbol) < 2 or len(symbol) > 5:
                 return None
@@ -191,7 +185,7 @@ Symbol:"""
         Returns (symbol_or_None, agent_scores_dict).
         Replaces the previous pair of sequential extract_stock_symbol + classify_query calls.
         """
-        if not self.openai_client:
+        if not self.llm_client:
             return None, {}
 
         agent_descriptions = "\n".join(
@@ -218,18 +212,16 @@ User Query: "{query}"
 Respond with valid JSON only — no markdown, no explanation."""
 
         try:
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            content = await self.llm_client.complete(
                 messages=[
                     {"role": "system", "content": "You are a precise financial query classifier. Always respond with valid JSON only."},
                     {"role": "user", "content": prompt},
                 ],
-                response_format={"type": "json_object"},
                 temperature=0.1,
                 max_tokens=300,
+                json_mode=True,
             )
-            content = response.choices[0].message.content.strip()
-            parsed = json.loads(content)
+            parsed = json.loads(content.strip())
 
             raw_symbol = parsed.get("symbol")
             symbol = raw_symbol.strip().upper() if raw_symbol and isinstance(raw_symbol, str) else None
@@ -253,42 +245,25 @@ class IntelligentOrchestrator:
     """
     
     def __init__(self):
-        # Initialize OpenAI client using settings
-        from config.settings import settings
-        openai_api_key = settings.openai_api_key
-        if not openai_api_key:
-            logger.warning("OpenAI API key not found. Some features will be limited.")
-            self.openai_client = None
-        else:
-            self.openai_client = OpenAI(api_key=openai_api_key)
-        
-        self.query_classifier = QueryClassifier(self.openai_client)
+        from src.llm.factory import create_llm_client
+        large_client = create_llm_client("large")
+        small_client = create_llm_client("small")
+
+        self.query_classifier = QueryClassifier(large_client)
         self.orchestrator = OptionsOracleOrchestrator()
         self.decision_engine = DecisionEngine()
         self.market_data_manager = MarketDataManager()
         self.technical_calculator = TechnicalIndicatorsCalculator()
-        
-        # Initialize individual agents (only if OpenAI client is available)
-        if self.openai_client:
-            self.technical_agent = TechnicalAnalysisAgent(self.openai_client)
-            self.sentiment_agent = SentimentAnalysisAgent(self.openai_client)
-            self.flow_agent = OptionsFlowAgent(self.openai_client)
-            self.history_agent = HistoricalPatternAgent(self.openai_client)
-            self.education_agent = EducationAgent(self.openai_client)
-            self.risk_agent = RiskManagementAgent(self.openai_client)
-            self.buy_agent = BuyAgent(self.openai_client)
-            self.multi_stock_agent = MultiStockAnalysisAgent(self.openai_client)
-        else:
-            # Use fallback mode without OpenAI agents
-            self.technical_agent = None
-            self.sentiment_agent = None
-            self.flow_agent = None
-            self.history_agent = None
-            self.education_agent = None
-            self.risk_agent = None
-            self.buy_agent = None
-            self.multi_stock_agent = None
-        
+
+        self.technical_agent = TechnicalAnalysisAgent(large_client)
+        self.sentiment_agent = SentimentAnalysisAgent(large_client)
+        self.flow_agent = OptionsFlowAgent(small_client)
+        self.history_agent = HistoricalPatternAgent(large_client)
+        self.education_agent = EducationAgent(small_client)
+        self.risk_agent = RiskManagementAgent(large_client)
+        self.buy_agent = BuyAgent(large_client)
+        self.multi_stock_agent = MultiStockAnalysisAgent(large_client)
+
         logger.info("Intelligent Orchestrator initialized")
     
     async def process_user_query(
