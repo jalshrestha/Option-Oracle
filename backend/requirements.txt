@@ -1,0 +1,90 @@
+# Neural Options Oracle++ Backend Dependencies
+
+# Core Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0,<3.0.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+
+# Database (PostgreSQL + async)
+asyncpg>=0.29.0
+sqlalchemy[asyncio]>=2.0.23
+alembic>=1.13.0
+
+# AI
+openai>=1.3.0
+google-generativeai>=0.3.0
+
+# ML & Data Science (let pip resolve compatible versions)
+lightgbm>=4.2.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Financial Data Sources
+alpaca-py>=0.21.0
+yfinance>=0.2.28
+ta>=0.11.0
+ccxt>=4.1.0
+
+# Web / HTTP
+requests>=2.31.0
+httpx>=0.25.0
+aiohttp>=3.9.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Scraping / OCR
+Pillow>=10.0.0
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+
+# Options Math
+scipy>=1.11.0
+matplotlib>=3.7.0
+plotly>=5.17.0
+
+# Real-time
+websockets>=12.0
+redis>=5.0.0
+celery>=5.3.0
+kombu>=5.3.0
+websocket-client>=1.6.0
+tornado>=6.4
+
+# Financial calculations (pure-python)
+py-vollib-vectorized>=0.1.1
+
+# Technical indicators
+stock-indicators>=1.3.0
+
+# Serialization / validation
+jsonschema>=4.20.0
+
+# Logging & monitoring
+loguru>=0.7.0
+prometheus-client>=0.19.0
+structlog>=23.2.0
+
+# Utilities
+pytz>=2023.3
+python-dateutil>=2.8.2
+cryptography>=42.0.0
+urllib3>=2.0.0
+psutil>=5.9.0
+cachetools>=5.3.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.12.0
+pytest-cov>=4.1.0
+
+# Development
+black>=23.11.0
+isort>=5.12.0
+flake8>=6.1.0
+mypy>=1.7.0
