@@ -284,46 +284,53 @@ class MarketDataManager:
             return data
     
     async def _get_cached_ai_analysis(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get cached AI analysis"""
-        
+        """Get cached AI analysis (15-minute TTL)."""
+        from datetime import timezone
+        from sqlalchemy import select
+        from src.models.cache import AiAnalysisCache
+
         try:
-            # Query database cache for AI analysis (longer TTL: 15 minutes)
-            result = await asyncio.create_task(
-                asyncio.to_thread(
-                    db_manager.client.table('ai_analysis_cache').select('*').eq('symbol', symbol).single().execute
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(AiAnalysisCache).where(AiAnalysisCache.symbol == symbol)
                 )
-            )
-            
-            if result.data:
-                cache_time = datetime.fromisoformat(result.data['last_updated'].replace('Z', '+00:00'))
-                if datetime.now(cache_time.tzinfo) - cache_time < timedelta(seconds=900):  # 15 minutes
-                    return result.data['analysis_data']
-            
+                row = result.scalar_one_or_none()
+                if row:
+                    cache_time = row.last_updated
+                    if cache_time.tzinfo is None:
+                        cache_time = cache_time.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) - cache_time < timedelta(seconds=900):
+                        return row.analysis_data
         except Exception as e:
             logger.debug(f"AI analysis cache read failed for {symbol}: {e}")
-        
+
         return None
-    
+
     async def _cache_ai_analysis(self, symbol: str, analysis: Dict[str, Any]) -> None:
-        """Cache AI analysis"""
-        
+        """Cache AI analysis results."""
+        from datetime import timezone
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from src.models.cache import AiAnalysisCache
+
         try:
-            cache_record = {
-                'symbol': symbol,
-                'analysis_data': analysis,
-                'confidence_score': analysis['ai_intelligence']['confidence_score'],
-                'last_updated': datetime.now().isoformat()
-            }
-            
-            # Upsert to database
-            await asyncio.create_task(
-                asyncio.to_thread(
-                    db_manager.client.table('ai_analysis_cache').upsert(cache_record).execute
-                )
+            confidence = analysis.get('ai_intelligence', {}).get('confidence_score')
+            stmt = pg_insert(AiAnalysisCache).values(
+                symbol=symbol,
+                analysis_data=analysis,
+                confidence_score=confidence,
+                last_updated=datetime.now(timezone.utc),
+            ).on_conflict_do_update(
+                index_elements=["symbol"],
+                set_={
+                    "analysis_data": analysis,
+                    "confidence_score": confidence,
+                    "last_updated": datetime.now(timezone.utc),
+                },
             )
-            
+            async with AsyncSessionLocal() as session:
+                await session.execute(stmt)
+                await session.commit()
             logger.debug(f"AI analysis cached for {symbol}")
-            
         except Exception as e:
             logger.warning(f"Failed to cache AI analysis for {symbol}: {e}")
     

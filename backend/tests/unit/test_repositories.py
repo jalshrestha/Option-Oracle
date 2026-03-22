@@ -1,47 +1,41 @@
 """
 Unit tests for src/repositories/
-All DB calls are mocked — no live Supabase connection needed.
+All DB calls use a mocked AsyncSession — no live DB connection needed.
 """
-import pytest
+import uuid
+from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.repositories.base import BaseRepository
 from src.repositories.signals import TradingSignalRepository
 from src.repositories.positions import PositionRepository
 from src.repositories.sessions import SessionRepository
 from src.repositories.stocks import StockRepository
-from src.exceptions import DatabaseError
+from src.exceptions import DatabaseError, NotFoundError
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_db(table_result=None, raise_on_execute=False):
-    """Build a mock SupabaseManager whose .client.table().*.execute() returns table_result."""
-    mock_result = MagicMock()
-    mock_result.data = table_result if table_result is not None else []
-    mock_result.count = len(table_result) if table_result else 0
+def _mock_session():
+    """Return an AsyncMock that looks like an AsyncSession."""
+    session = AsyncMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    session.close = AsyncMock()
+    return session
 
-    chain = MagicMock()
-    chain.select.return_value = chain
-    chain.insert.return_value = chain
-    chain.upsert.return_value = chain
-    chain.update.return_value = chain
-    chain.eq.return_value = chain
-    chain.gt.return_value = chain
-    chain.order.return_value = chain
-    chain.limit.return_value = chain
-    chain.single.return_value = chain
 
-    if raise_on_execute:
-        chain.execute.side_effect = Exception("DB connection refused")
-    else:
-        chain.execute.return_value = mock_result
-
-    db = MagicMock()
-    db.client.table.return_value = chain
-    return db
+def _scalar_result(value):
+    """Build a mock execute() result whose .scalars().all() returns value."""
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = value
+    result.scalar_one_or_none.return_value = value[0] if value else None
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -50,12 +44,12 @@ def _make_db(table_result=None, raise_on_execute=False):
 
 class TestBaseRepository:
     def test_handle_db_error_raises_database_error(self):
-        repo = BaseRepository(_make_db())
+        repo = BaseRepository(_mock_session())
         with pytest.raises(DatabaseError):
             repo._handle_db_error(RuntimeError("raw db error"), "test_op")
 
     def test_handle_db_error_wraps_original(self):
-        repo = BaseRepository(_make_db())
+        repo = BaseRepository(_mock_session())
         original = ValueError("original cause")
         try:
             repo._handle_db_error(original, "test_op")
@@ -70,53 +64,66 @@ class TestBaseRepository:
 class TestTradingSignalRepository:
     @pytest.mark.asyncio
     async def test_save_returns_id(self):
-        db = _make_db(table_result=[{"id": "sig-abc-123"}])
-        repo = TradingSignalRepository(db)
-        result = await repo.save({"symbol": "AAPL", "direction": "BUY"})
-        assert result == "sig-abc-123"
+        session = _mock_session()
+        repo = TradingSignalRepository(session)
 
-    @pytest.mark.asyncio
-    async def test_save_returns_none_when_no_data(self):
-        db = _make_db(table_result=[])
-        repo = TradingSignalRepository(db)
-        result = await repo.save({"symbol": "AAPL"})
-        assert result is None
+        # Mock TradingSignal model construction + flush sets .id
+        fake_id = uuid.uuid4()
+        with patch("src.repositories.signals.TradingSignal") as MockSignal:
+            instance = MagicMock()
+            instance.id = fake_id
+            MockSignal.return_value = instance
+            result = await repo.save({"symbol": "AAPL", "direction": "BUY"})
+
+        assert result == str(fake_id)
+        session.add.assert_called_once_with(instance)
+        session.flush.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_save_raises_database_error_on_failure(self):
-        db = _make_db(raise_on_execute=True)
-        repo = TradingSignalRepository(db)
-        with pytest.raises(DatabaseError):
-            await repo.save({"symbol": "AAPL"})
+        session = _mock_session()
+        session.flush.side_effect = Exception("DB error")
+        repo = TradingSignalRepository(session)
+
+        with patch("src.repositories.signals.TradingSignal"):
+            with pytest.raises(DatabaseError):
+                await repo.save({"symbol": "AAPL"})
 
     @pytest.mark.asyncio
     async def test_get_by_symbol_returns_list(self):
-        signals = [{"id": "1", "symbol": "AAPL"}, {"id": "2", "symbol": "AAPL"}]
-        db = _make_db(table_result=signals)
-        repo = TradingSignalRepository(db)
-        result = await repo.get_by_symbol("AAPL")
+        session = _mock_session()
+        fake_rows = [MagicMock(), MagicMock()]
+        for row in fake_rows:
+            row.__table__ = MagicMock()
+            row.__table__.columns = []
+        session.execute.return_value = _scalar_result(fake_rows)
+        repo = TradingSignalRepository(session)
+
+        with patch("src.repositories.signals.select"):
+            result = await repo.get_by_symbol("AAPL")
+
         assert len(result) == 2
 
     @pytest.mark.asyncio
-    async def test_get_latest_returns_first_record(self):
-        db = _make_db(table_result=[{"id": "latest-1", "symbol": "TSLA"}])
-        repo = TradingSignalRepository(db)
-        result = await repo.get_latest("TSLA")
-        assert result["id"] == "latest-1"
-
-    @pytest.mark.asyncio
-    async def test_get_latest_returns_none_for_unknown_symbol(self):
-        db = _make_db(table_result=[])
-        repo = TradingSignalRepository(db)
-        result = await repo.get_latest("UNKNOWN")
-        assert result is None
-
-    @pytest.mark.asyncio
     async def test_get_by_symbol_raises_on_db_error(self):
-        db = _make_db(raise_on_execute=True)
-        repo = TradingSignalRepository(db)
-        with pytest.raises(DatabaseError):
-            await repo.get_by_symbol("AAPL")
+        session = _mock_session()
+        session.execute.side_effect = Exception("DB error")
+        repo = TradingSignalRepository(session)
+
+        with patch("src.repositories.signals.select"):
+            with pytest.raises(DatabaseError):
+                await repo.get_by_symbol("AAPL")
+
+    @pytest.mark.asyncio
+    async def test_get_latest_returns_none_for_no_results(self):
+        session = _mock_session()
+        session.execute.return_value = _scalar_result([])
+        repo = TradingSignalRepository(session)
+
+        with patch("src.repositories.signals.select"):
+            result = await repo.get_latest("UNKNOWN")
+
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -126,51 +133,89 @@ class TestTradingSignalRepository:
 class TestPositionRepository:
     @pytest.mark.asyncio
     async def test_create_returns_id(self):
-        db = _make_db(table_result=[{"id": "pos-xyz"}])
-        repo = PositionRepository(db)
-        result = await repo.create({"symbol": "AAPL", "quantity": 1})
-        assert result == "pos-xyz"
+        session = _mock_session()
+        fake_id = uuid.uuid4()
+        repo = PositionRepository(session)
+
+        with patch("src.repositories.positions.Position") as MockPos:
+            instance = MagicMock()
+            instance.id = fake_id
+            MockPos.return_value = instance
+            result = await repo.create({"symbol": "AAPL", "quantity": 1})
+
+        assert result == str(fake_id)
 
     @pytest.mark.asyncio
     async def test_update_pnl_does_not_raise(self):
-        db = _make_db(table_result=[])
-        repo = PositionRepository(db)
-        await repo.update_pnl("pos-xyz", 250.0)  # Should not raise
+        session = _mock_session()
+        fake_pos = MagicMock()
+        fake_pos.unrealized_pnl = 0.0
+        session.execute.return_value = _scalar_result([fake_pos])
+        repo = PositionRepository(session)
+
+        with patch("src.repositories.positions.select"):
+            await repo.update_pnl(str(uuid.uuid4()), 250.0)
 
     @pytest.mark.asyncio
     async def test_update_pnl_raises_on_db_error(self):
-        db = _make_db(raise_on_execute=True)
-        repo = PositionRepository(db)
-        with pytest.raises(DatabaseError):
-            await repo.update_pnl("pos-xyz", 100.0)
+        session = _mock_session()
+        session.execute.side_effect = Exception("DB error")
+        repo = PositionRepository(session)
+
+        with patch("src.repositories.positions.select"):
+            with pytest.raises(DatabaseError):
+                await repo.update_pnl(str(uuid.uuid4()), 100.0)
 
     @pytest.mark.asyncio
     async def test_get_open_returns_list(self):
-        db = _make_db(table_result=[{"id": "p1"}, {"id": "p2"}])
-        repo = PositionRepository(db)
-        result = await repo.get_open("session-123")
+        session = _mock_session()
+        fake_rows = [MagicMock(), MagicMock()]
+        for row in fake_rows:
+            row.__table__ = MagicMock()
+            row.__table__.columns = []
+        session.execute.return_value = _scalar_result(fake_rows)
+        repo = PositionRepository(session)
+
+        with patch("src.repositories.positions.select"):
+            result = await repo.get_open("session-123")
+
         assert len(result) == 2
 
     @pytest.mark.asyncio
     async def test_get_by_id_returns_none_on_exception(self):
-        db = _make_db(raise_on_execute=True)
-        repo = PositionRepository(db)
-        result = await repo.get_by_id("missing-id")
+        session = _mock_session()
+        session.execute.side_effect = Exception("not found")
+        repo = PositionRepository(session)
+
+        with patch("src.repositories.positions.select"):
+            result = await repo.get_by_id(str(uuid.uuid4()))
+
         assert result is None
 
     @pytest.mark.asyncio
     async def test_close_returns_updated_record(self):
-        db = _make_db(table_result=[{"id": "p1", "status": "closed"}])
-        repo = PositionRepository(db)
-        result = await repo.close("p1")
-        assert result["status"] == "closed"
+        session = _mock_session()
+        fake_pos = MagicMock()
+        fake_pos.__table__ = MagicMock()
+        fake_pos.__table__.columns = []
+        fake_pos.status = "open"
+        session.execute.return_value = _scalar_result([fake_pos])
+        repo = PositionRepository(session)
+
+        with patch("src.repositories.positions.select"):
+            result = await repo.close(str(uuid.uuid4()))
+
+        assert fake_pos.status == "closed"
 
     @pytest.mark.asyncio
-    async def test_close_raises_on_db_error(self):
-        db = _make_db(raise_on_execute=True)
-        repo = PositionRepository(db)
-        with pytest.raises(DatabaseError):
-            await repo.close("p1")
+    async def test_close_raises_not_found_when_missing(self):
+        session = _mock_session()
+        session.execute.return_value = _scalar_result([])
+        repo = PositionRepository(session)
+
+        with patch("src.repositories.positions.select"):
+            with pytest.raises(NotFoundError):
+                await repo.close(str(uuid.uuid4()))
 
 
 # ---------------------------------------------------------------------------
@@ -180,23 +225,39 @@ class TestPositionRepository:
 class TestSessionRepository:
     @pytest.mark.asyncio
     async def test_create_returns_session(self):
-        db = _make_db(table_result=[{"session_token": "tok-abc"}])
-        repo = SessionRepository(db)
-        result = await repo.create({"session_token": "tok-abc"})
-        assert result["session_token"] == "tok-abc"
+        session = _mock_session()
+        fake_row = MagicMock()
+        fake_row.__table__ = MagicMock()
+        fake_row.__table__.columns = []
+        repo = SessionRepository(session)
+
+        with patch("src.repositories.sessions.BrowserSession") as MockSess:
+            MockSess.return_value = fake_row
+            result = await repo.create({"session_token": "tok-abc"})
+
+        session.add.assert_called_once_with(fake_row)
 
     @pytest.mark.asyncio
     async def test_get_returns_none_on_exception(self):
-        db = _make_db(raise_on_execute=True)
-        repo = SessionRepository(db)
-        result = await repo.get("nonexistent-token")
+        session = _mock_session()
+        session.execute.side_effect = Exception("conn error")
+        repo = SessionRepository(session)
+
+        with patch("src.repositories.sessions.select"):
+            result = await repo.get("nonexistent-token")
+
         assert result is None
 
     @pytest.mark.asyncio
     async def test_touch_does_not_raise(self):
-        db = _make_db()
-        repo = SessionRepository(db)
-        await repo.touch("some-token")  # Should not raise
+        session = _mock_session()
+        fake_row = MagicMock()
+        fake_row.last_accessed_at = None
+        session.execute.return_value = _scalar_result([fake_row])
+        repo = SessionRepository(session)
+
+        with patch("src.repositories.sessions.select"):
+            await repo.touch("some-token")
 
 
 # ---------------------------------------------------------------------------
@@ -206,28 +267,45 @@ class TestSessionRepository:
 class TestStockRepository:
     @pytest.mark.asyncio
     async def test_upsert_batch_empty_list_is_noop(self):
-        db = _make_db()
-        repo = StockRepository(db)
-        await repo.upsert_batch([])  # Should not touch DB
-        db.client.table.assert_not_called()
+        session = _mock_session()
+        repo = StockRepository(session)
+        await repo.upsert_batch([])
+        session.execute.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_calls_upsert(self):
-        db = _make_db(table_result=[])
-        repo = StockRepository(db)
-        await repo.upsert_batch([{"symbol": "AAPL"}, {"symbol": "TSLA"}])
-        db.client.table.assert_called()
+    async def test_upsert_batch_calls_execute(self):
+        session = _mock_session()
+        repo = StockRepository(session)
+
+        with patch("src.repositories.stocks.pg_insert") as mock_insert:
+            stmt = MagicMock()
+            stmt.on_conflict_do_update.return_value = stmt
+            mock_insert.return_value = stmt
+            await repo.upsert_batch([{"symbol": "AAPL"}, {"symbol": "TSLA"}])
+
+        session.execute.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_trending_returns_list(self):
-        db = _make_db(table_result=[{"symbol": "NVDA"}, {"symbol": "TSLA"}])
-        repo = StockRepository(db)
-        result = await repo.get_trending()
+        session = _mock_session()
+        fake_rows = [MagicMock(), MagicMock()]
+        for row in fake_rows:
+            row.__table__ = MagicMock()
+            row.__table__.columns = []
+        session.execute.return_value = _scalar_result(fake_rows)
+        repo = StockRepository(session)
+
+        with patch("src.repositories.stocks.select"):
+            result = await repo.get_trending()
+
         assert len(result) == 2
 
     @pytest.mark.asyncio
     async def test_get_trending_raises_on_db_error(self):
-        db = _make_db(raise_on_execute=True)
-        repo = StockRepository(db)
-        with pytest.raises(DatabaseError):
-            await repo.get_trending()
+        session = _mock_session()
+        session.execute.side_effect = Exception("DB error")
+        repo = StockRepository(session)
+
+        with patch("src.repositories.stocks.select"):
+            with pytest.raises(DatabaseError):
+                await repo.get_trending()

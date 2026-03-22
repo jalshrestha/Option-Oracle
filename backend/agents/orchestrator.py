@@ -10,7 +10,7 @@ import openai
 from openai import OpenAI
 from config.settings import settings
 from config.logging import get_agents_logger
-from config.database import db_manager
+from config.database import AsyncSessionLocal
 from config.constants import (
     BASE_WEIGHTS,
     SIGNAL_STRONG_BUY, SIGNAL_BUY, SIGNAL_SELL, SIGNAL_STRONG_SELL,
@@ -442,7 +442,11 @@ class OptionsOracleOrchestrator:
                 'educational_content': analysis['educational_content']
             }
             
-            await db_manager.save_trading_signal(signal_data)
+            from src.repositories.signals import TradingSignalRepository
+            async with AsyncSessionLocal() as session:
+                repo = TradingSignalRepository(session)
+                await repo.save(signal_data)
+                await session.commit()
             logger.info(f"Analysis saved to database for {analysis['symbol']}")
             
         except Exception as e:

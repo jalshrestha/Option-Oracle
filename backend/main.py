@@ -49,8 +49,8 @@ def check_environment():
     missing_optional = []
     
     # Check required settings using the settings object
-    if not settings.supabase_url or not settings.supabase_service_key:
-        missing_required.extend(["SUPABASE_URL", "SUPABASE_SERVICE_KEY"])
+    if not settings.database_url:
+        missing_required.append("DATABASE_URL")
     
     # Check optional settings
     if not settings.openai_api_key:

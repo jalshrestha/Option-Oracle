@@ -26,6 +26,9 @@ services:
       - "8080:8080"
     env_file:
       - ./backend/.env
+    environment:
+      # Override localhost URL from .env — inside Docker the DB is reachable via service name
+      DATABASE_URL: postgresql+asyncpg://oracle:oracle_dev@postgres:5432/option_oracle
     volumes:
       - ./backend/logs:/app/logs
     depends_on:
