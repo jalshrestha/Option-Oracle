@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from openai import OpenAI
 from config.logging import get_agents_logger
+from config.constants import MODEL_LARGE, DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE
 
 logger = get_agents_logger()
 
@@ -15,7 +16,7 @@ logger = get_agents_logger()
 class BaseAgent(ABC):
     """Base class for all AI agents in the system"""
     
-    def __init__(self, client: OpenAI, name: str, model: str = "gpt-4o"):
+    def __init__(self, client: OpenAI, name: str, model: str = MODEL_LARGE):
         self.client = client
         self.name = name
         self.model = model
@@ -44,12 +45,25 @@ class BaseAgent(ABC):
         pass
     
     async def _make_completion(
-        self, 
-        messages: list, 
+        self,
+        messages: list,
         tools: Optional[list] = None,
-        temperature: float = 0.7,
-        response_schema: Optional[Dict] = None
+        temperature: float = DEFAULT_TEMPERATURE,
+        response_schema: Optional[Dict] = None,
     ) -> Dict[str, Any]:
+        """
+        Call the OpenAI chat completions API and return a normalized response dict.
+
+        Args:
+            messages: List of chat message dicts (role/content pairs).
+            tools: Optional tool definitions for function calling.
+            temperature: Sampling temperature (0 = deterministic).
+            response_schema: If provided, request structured JSON output matching this schema.
+
+        Returns:
+            Dict with keys: 'content' (str), 'tool_calls' (list), 'usage' (dict), 'model' (str).
+            On failure, returns a fallback response via _get_fallback_response().
+        """
         """Make a completion request to OpenAI"""
         
         try:
@@ -66,7 +80,7 @@ class BaseAgent(ABC):
                 "model": self.model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": 4000
+                "max_tokens": DEFAULT_MAX_TOKENS
             }
             
             # Use structured outputs if schema provided, otherwise use basic json_object
@@ -191,9 +205,20 @@ class BaseAgent(ABC):
         }
     
     def _validate_confidence(self, confidence: float) -> float:
-        """Validate and normalize confidence score"""
+        """Validate and normalize confidence score to [0.0, 1.0]."""
         try:
             conf = float(confidence)
             return max(0.0, min(1.0, conf))
         except (ValueError, TypeError):
-            return 0.5  # Default confidence
+            return 0.5
+
+    def _ensure_fields(self, data: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+        """Fill missing keys in *data* with values from *defaults*. Returns data in-place."""
+        for key, value in defaults.items():
+            if key not in data:
+                data[key] = value
+        return data
+
+
+# Reusable JSON Schema fragment for confidence — import this in agent schema definitions
+CONFIDENCE_SCHEMA = {"type": "number", "minimum": 0.0, "maximum": 1.0}

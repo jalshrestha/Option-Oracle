@@ -128,18 +128,25 @@ class TechnicalIndicatorsCalculator:
                     else:
                         raise ValueError(f"Required column for {key} not found in {list(df.columns)}")
             
-            quotes = []
-            for index, row in df.iterrows():
-                quote = Quote(
-                    date=index if hasattr(index, 'date') else datetime.now(),
-                    open=float(row[cols['open']]),
-                    high=float(row[cols['high']]),
-                    low=float(row[cols['low']]),
-                    close=float(row[cols['close']]),
-                    volume=int(row[cols['volume']]) if cols['volume'] else 1000000
+            dates = df.index.tolist()
+            opens = df[cols['open']].tolist()
+            highs = df[cols['high']].tolist()
+            lows = df[cols['low']].tolist()
+            closes = df[cols['close']].tolist()
+            vols = df[cols['volume']].tolist() if cols['volume'] else [1_000_000] * len(df)
+
+            quotes = [
+                Quote(
+                    date=d if hasattr(d, 'date') else datetime.now(),
+                    open=float(o),
+                    high=float(h),
+                    low=float(l),
+                    close=float(c),
+                    volume=int(v),
                 )
-                quotes.append(quote)
-            
+                for d, o, h, l, c, v in zip(dates, opens, highs, lows, closes, vols)
+            ]
+
             logger.debug(f"Successfully converted {len(quotes)} quotes")
             return quotes
             

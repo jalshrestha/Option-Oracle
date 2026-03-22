@@ -1,360 +1,207 @@
-# 🚀 Neural Options Oracle++ - COMPLETE PRODUCTION ARCHITECTURE
+# Option Oracle
 
-## 📋 **System Overview**
-
-**✅ FULLY IMPLEMENTED: OpenAI-First ML Pipeline with Real Agent Integration**
-
-Complete AI-driven options trading platform combining multi-agent orchestration, advanced machine learning, and real-time market data to provide intelligent options trading signals and education.
-
-**🎉 STATUS: 100% OPERATIONAL - All 4 ML Models Working with Real Data Integration**
+An AI-driven options trading intelligence platform. Given a stock ticker, it runs six specialized AI agents in parallel, aggregates their analysis through a dynamic weighting engine, and returns a structured BUY/SELL/HOLD signal with strike recommendations, confidence scores, and trade rationale.
 
 ---
 
-## 🏗️ **Core Architecture**
+## How it works
 
-```
-┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
-│   Frontend      │    │     Backend API      │    │   Data & AI Layer   │
-│   (Next.js)     │◄──►│     (FastAPI)        │◄──►│   (OpenAI + Real    │
-│   [PLANNED]     │    │     [PLANNED]        │    │    Market Data)     │
-│                 │    │                      │    │   ✅ COMPLETE       │
-└─────────────────┘    └──────────────────────┘    └─────────────────────┘
-```
+Each analysis request triggers a pipeline of four parallel stages:
 
----
+1. **Data ingestion** — live quotes, OHLCV history, options chains, and 62 technical indicators are pulled from Alpaca and yfinance and cached for 5 minutes.
 
-## 📁 **IMPLEMENTED ARCHITECTURE - All Essential Files**
+2. **Agent analysis** — six GPT-powered agents run concurrently, each examining the stock through a different lens:
 
-### **🔥 Core Data & Intelligence Layer - ✅ COMPLETE**
-```
-📊 src/data/market_data_manager.py               ✅ IMPLEMENTED
-   └── MAIN: Coordinates all data sources
-   └── Caches AI analysis (15min) and market data (5min)  
-   └── Provides unified interface for all data
-   └── Supabase integration for persistence
+   | Agent | Model | Focus |
+   |---|---|---|
+   | Technical | GPT-4o | Moving averages, RSI, MACD, Bollinger Bands, VWAP, support/resistance |
+   | Sentiment | GPT-4o-mini | Social media (StockTwits, Reddit), news sentiment |
+   | Options Flow | GPT-4o-mini | Put/call ratios, unusual volume, smart money direction |
+   | Historical | GPT-4o | Pattern recognition, seasonality, historical precedent |
+   | Risk | GPT-4o | Strike selection, position sizing, Greeks-based recommendations |
+   | Education | GPT-4o-mini | Plain-language explanation of the signal and trade rationale |
 
-📈 src/data/alpaca_client.py                     ✅ IMPLEMENTED  
-   └── MAIN: Real-time market data via Alpaca API + yfinance
-   └── Professional stock-indicators integration (62 metrics)
-   └── Options data via yfinance as fallback
-   └── Real market quotes, bars, technical indicators
+3. **Decision engine** — agent scores are combined using scenario-aware weights (e.g. technical analysis is weighted higher in trending markets; options flow gets more weight near earnings). The weighted score maps to a directional signal and confidence level.
 
-📊 src/indicators/technical_calculator.py        ✅ IMPLEMENTED
-   └── MAIN: Professional technical indicators
-   └── 62 metrics using stock-indicators library
-   └── Moving averages, oscillators, trend indicators
-   └── Real-time calculation with market data
-```
+4. **ML layer** — a supporting ML pipeline (LightGBM for flow prediction, Prophet for volatility forecasting, a DQN reinforcement learning agent) feeds additional signal components into the ensemble.
 
-### **🤖 AI Agents Layer (OpenAI Agents SDK v0.3.0) - ✅ COMPLETE**
-```
-🎯 agents/orchestrator.py                       ✅ IMPLEMENTED
-   └── MAIN: Coordinates all 6 specialized agents
-   └── Dynamic weight assignment based on market scenarios
-   └── Real agent handoffs and analysis aggregation
-   └── No mock data - all real agent results
-
-🔍 agents/technical_agent.py                    ✅ IMPLEMENTED
-   └── Advanced technical analysis with GPT-4o
-   └── Dynamic scenario detection (Range-bound, Trending, etc.)
-   └── Professional 62-indicator analysis
-   └── Real market data integration
-
-💭 agents/sentiment_agent.py                    ✅ IMPLEMENTED  
-   └── Multi-source sentiment analysis with GPT-4o-mini
-   └── Reddit, Twitter, StockTwits integration via web search
-   └── Financial sentiment classification
-   └── Real social media data processing
-
-⚡ agents/flow_agent.py                         ✅ IMPLEMENTED
-   └── Options flow analysis with Gemini 2.0
-   └── Put/call ratios, unusual volume detection
-   └── Real options chain data analysis
-   └── Flow direction and sentiment classification
-
-📈 agents/history_agent.py                      ✅ IMPLEMENTED
-   └── Historical pattern recognition with GPT-4o
-   └── Support/resistance levels
-   └── Pattern strength and reliability scoring
-   └── Real historical data analysis
-
-🛡️ agents/risk_agent.py                         ✅ IMPLEMENTED
-   └── Risk management and strike recommendations
-   └── User risk profile integration (Conservative/Moderate/Aggressive)
-   └── Greeks-based position sizing
-   └── Real risk calculations with market data
-
-🎓 agents/education_agent.py                    ✅ IMPLEMENTED
-   └── Educational content generation with GPT-4o-mini
-   └── Strategy explanations and trade reasoning
-   └── Interactive learning based on real trades
-   └── Adaptive content generation
-```
-
-### **🧠 Machine Learning Pipeline - ✅ COMPLETE (100% Working)**
-```
-🤖 src/ml/openai_sentiment_model.py             ✅ IMPLEMENTED
-   └── OpenAI-based sentiment analysis (replaces FinBERT)
-   └── GPT-4o-mini for financial sentiment classification  
-   └── Real text processing with market context
-   └── Confidence scoring and validation
-
-⚡ src/ml/lightgbm_flow_model.py                ✅ IMPLEMENTED
-   └── Options flow prediction using LightGBM
-   └── Feature engineering from real options data
-   └── Rule-based fallbacks for robustness
-   └── Flow sentiment classification (Bullish/Bearish/Neutral)
-
-📊 src/ml/prophet_volatility_model.py           ✅ IMPLEMENTED
-   └── Volatility forecasting using Facebook Prophet
-   └── Real market data processing and seasonal analysis
-   └── Statistical fallbacks for reliability
-   └── Volatility trend prediction
-
-🎯 src/ml/ensemble_model.py                     ✅ IMPLEMENTED
-   └── Combines all ML components with dynamic weighting
-   └── Market regime detection and weight adjustment
-   └── Component score aggregation and validation
-   └── Final signal generation with confidence scoring
-
-🤖 src/ml/rl_trading_agent.py                   ✅ IMPLEMENTED
-   └── Reinforcement Learning with real agent results
-   └── NO MOCK DATA - uses actual agent analysis
-   └── PyTorch-based Deep Q-Network implementation
-   └── Real trading state from market data and agent results
-```
-
-### **⚙️ Decision Engine - ✅ COMPLETE**
-```
-🎯 src/core/decision_engine.py                  ✅ IMPLEMENTED
-   └── Main decision processing pipeline
-   └── Dynamic weight assignment based on market scenarios
-   └── Scenario detection and weight adjustment
-   └── Signal generation (BUY/SELL/HOLD) with confidence
-
-🔍 ScenarioDetector Class                       ✅ IMPLEMENTED
-   └── Market scenario identification
-   └── Maps technical scenarios to decision scenarios
-   └── Supports: Strong Trend, Range-bound, High/Low Volatility
-
-⚖️ RiskBasedStrikeSelector Class               ✅ IMPLEMENTED
-   └── Strike selection based on user risk profile
-   └── Conservative/Moderate/Aggressive risk profiles
-   └── Delta-based strike filtering
-   └── Risk-adjusted return optimization
-```
-
-### **🗄️ Database & Configuration - ✅ COMPLETE**
-```
-🗄️ config/database.py                          ✅ IMPLEMENTED
-   └── Supabase integration for data persistence
-   └── Real-time data caching and retrieval
-   └── Analysis results storage
-   └── User profile and settings management
-
-⚙️ config/settings.py                          ✅ IMPLEMENTED
-   └── Environment configuration management
-   └── API keys and database credentials
-   └── Model settings and parameters
-   └── Caching and performance settings
-
-📝 config/logging.py                           ✅ IMPLEMENTED
-   └── Comprehensive logging system with loguru
-   └── Different log levels for components
-   └── File and console output
-   └── Performance and error tracking
-```
+Results are persisted to Supabase and returned through the REST API.
 
 ---
 
-## 🧪 **TESTING & VALIDATION - ✅ COMPLETE**
+## Tech stack
 
-### **✅ All Tests Passing (100% Success Rate)**
-```
-🧪 test_ml_simple.py                           ✅ 4/4 MODELS WORKING
-   └── OpenAI Sentiment: ✅ WORKING
-   └── LightGBM Flow: ✅ WORKING  
-   └── Ensemble Model: ✅ WORKING
-   └── RL Agent: ✅ WORKING
-
-🚀 test_complete_pipeline.py                   ✅ PIPELINE OPERATIONAL
-   └── Agent Analysis: ✅ Complete
-   └── ML Processing: ✅ Complete
-   └── Decision Engine: ✅ Complete
-   └── Strike Selection: ✅ Complete
-   └── Final Signal: HOLD (Example: AAPL)
-   └── Pipeline Status: 🎉 FULLY OPERATIONAL
-```
+| Layer | Technology |
+|---|---|
+| API | FastAPI, Uvicorn |
+| AI agents | OpenAI Agents SDK v0.3.0 (GPT-4o, GPT-4o-mini) |
+| ML models | LightGBM, Facebook Prophet, PyTorch (DQN) |
+| Market data | Alpaca API, yfinance |
+| Technical analysis | stock-indicators (62 indicators) |
+| Database | Supabase (PostgreSQL) |
+| Configuration | Pydantic Settings, python-dotenv |
+| Logging | Loguru |
+| Containerization | Docker, Docker Compose |
 
 ---
 
-## 🔄 **DYNAMIC WEIGHT ASSIGNMENT SYSTEM - ✅ IMPLEMENTED**
+## Getting started
 
-**Base Weights (Following Your Flowchart Logic):**
-- **Technical Analysis: 60%** - Primary decision driver
-- **Sentiment Analysis: 10%** - Market psychology factor  
-- **Options Flow: 10%** - Smart money indicator
-- **Historical Patterns: 20%** - Pattern recognition
+### Prerequisites
 
-**✅ Scenario-Based Adjustments Implemented:**
+- Python 3.11+
+- A [Supabase](https://supabase.com) project (free tier works)
+- An [OpenAI](https://platform.openai.com) API key
+- An [Alpaca](https://alpaca.markets) paper trading account (free)
 
-### High Volatility Scenario
-- Technical: 70% (+10%)
-- Flow: 15% (+5%)
-- Sentiment: 5% (-5%)
-- History: 15% (-5%)
+### Install
 
-### Low Volatility Scenario  
-- Technical: 50% (-10%)
-- Sentiment: 15% (+5%)
-- Flow: 15% (+5%) 
-- History: 25% (+5%)
-
-### Earnings Approaching
-- Technical: 50% (-10%)
-- Flow: 25% (+15%)
-- Sentiment: 10% (same)
-- History: 15% (-5%)
-
-### Strong Trend
-- Technical: 70% (+10%)
-- Sentiment: 5% (-5%)
-- Flow: 5% (-5%)
-- History: 20% (same)
-
----
-
-## 💾 **ENVIRONMENT & DEPENDENCIES - ✅ CONFIGURED**
-
-### **✅ Python Environment (Python 3.10)**
 ```bash
-# Core ML Dependencies - All Installed & Working
-pytorch==2.5.1                    ✅ INSTALLED
-numpy==1.26.4                     ✅ DOWNGRADED (PyTorch compatibility)
-lightgbm==4.5.0                   ✅ INSTALLED
-prophet==1.1.6                    ✅ INSTALLED
-scikit-learn==1.6.1               ✅ INSTALLED
+git clone https://github.com/jalshrestha/Option-Oracle.git
+cd Option-Oracle/option-trading-agent
+pip install -r requirements.txt
+```
 
-# OpenAI & AI Dependencies - All Working
-openai==1.58.1                    ✅ INSTALLED
-pydantic-settings==2.10.1         ✅ INSTALLED
-loguru==0.7.3                     ✅ INSTALLED
-requests-cache==1.2.1             ✅ INSTALLED
+### Configure
 
-# Market Data Dependencies - All Functional
-alpaca-py==0.35.1                 ✅ INSTALLED
-yfinance==0.2.50                  ✅ INSTALLED
-stock-indicators==1.2.1           ✅ INSTALLED (62 metrics)
+```bash
+cp .env.example .env
+```
 
-# Database & Storage - Configured
-supabase==2.12.1                  ✅ INSTALLED
-pandas==2.2.3                     ✅ INSTALLED
+Open `.env` and fill in the required values:
+
+```env
+# Required
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-key
+
+# Required for AI agents
+OPENAI_API_KEY=sk-...
+
+# Required for live market data
+ALPACA_API_KEY=your-alpaca-key
+ALPACA_SECRET_KEY=your-alpaca-secret
+
+# Optional — enables enhanced scraping
+JIGSAWSTACK_API_KEY=your-jigsawstack-key
+```
+
+### Initialize the database
+
+```bash
+python scripts/init_database.py
+```
+
+### Run
+
+```bash
+python main.py
+```
+
+The API starts on `http://localhost:8080`. Interactive docs are at `/docs`.
+
+### Run with Docker
+
+```bash
+docker-compose up
 ```
 
 ---
 
-## 🚀 **PRODUCTION READINESS CHECKLIST - ✅ COMPLETE**
+## API
 
-### **✅ Core System Components**
-- [x] **OpenAI Agents SDK Integration** - 6 specialized agents working
-- [x] **Real Market Data Integration** - Alpaca + yfinance + 62 technical indicators
-- [x] **ML Pipeline** - 4 models at 100% operational status
-- [x] **Decision Engine** - Dynamic weighting and signal generation
-- [x] **Risk Management** - Strike selection and position sizing
-- [x] **Database Integration** - Supabase with caching and persistence
-- [x] **Logging & Monitoring** - Comprehensive logging with loguru
-- [x] **Error Handling** - Robust fallbacks throughout system
+Base URL: `http://localhost:8080`
 
-### **✅ Data Quality & Reliability**
-- [x] **No Mock Data** - All real agent results and market data as requested
-- [x] **Real-Time Data** - Live market quotes and technical indicators
-- [x] **Professional Technical Analysis** - 62 indicators via stock-indicators
-- [x] **Caching Strategy** - 15min AI analysis, 5min market data
-- [x] **Data Validation** - Input validation and error handling
+| Endpoint | Description |
+|---|---|
+| `GET /api/v1/stocks/hot-stocks` | Trending stocks with market data and AI scores |
+| `GET /api/v1/agents/{symbol}` | Full agent analysis for a symbol |
+| `GET /api/v1/technical/{symbol}` | Technical indicators and chart data |
+| `GET /api/v1/signals/{symbol}` | Trading signals with confidence and rationale |
+| `POST /api/v1/chat` | Natural language query interface |
+| `GET /health` | Health check |
 
-### **✅ AI & ML Performance**
-- [x] **OpenAI-First Architecture** - Replaced FinBERT with GPT-4o-mini
-- [x] **Real Agent Integration** - RL agent uses actual agent results
-- [x] **Ensemble Model** - Dynamic component weighting
-- [x] **Confidence Scoring** - All predictions include confidence metrics
-- [x] **Scenario Adaptation** - Weights adjust based on market conditions
+See [API_SPECIFICATIONS.md](API_SPECIFICATIONS.md) for complete request/response schemas and WebSocket documentation.
 
 ---
 
-## 📈 **SYSTEM PERFORMANCE METRICS**
+## Project structure
 
-### **✅ Current Performance (Tested)**
 ```
-🎯 ML Models Success Rate: 100% (4/4 working)
-🤖 Agent Response Time: ~8-15 seconds per analysis
-📊 Technical Indicators: 62 metrics calculated successfully
-🔄 Pipeline Completion: ~30-45 seconds end-to-end
-💾 Database Operations: Successful with error handling
-🧠 Memory Usage: Optimized with efficient caching
-```
-
-### **✅ Real Data Integration Status**
-```
-📈 Market Data: ✅ Live Alpaca API + yfinance
-🔍 Technical Analysis: ✅ 62 professional indicators
-🤖 Agent Results: ✅ Real OpenAI agent analysis
-📊 Options Data: ✅ Real options chains and flow
-💭 Sentiment Data: ✅ Live social media via web search
-📚 Historical Data: ✅ Real historical patterns and support/resistance
-```
-
----
-
-## 🔮 **NEXT STEPS FOR FULL DEPLOYMENT**
-
-### **🚧 Remaining Components (Planned)**
-```
-🖥️ Frontend (Next.js + React)
-   └── Interactive dashboard with 3D visualizations
-   └── Real-time position monitoring
-   └── Educational module integration
-   └── User risk profile management
-
-🌐 Backend API (FastAPI)
-   └── RESTful endpoints for all functionality
-   └── WebSocket real-time updates
-   └── Authentication and user management
-   └── Rate limiting and security
-
-🚀 Production Deployment
-   └── Docker containerization
-   └── Kubernetes orchestration
-   └── CI/CD pipeline setup
-   └── Monitoring and alerting
+option-trading-agent/
+├── main.py                          # Entry point
+├── agents/                          # AI agent implementations
+│   ├── orchestrator.py              # Coordinates parallel agent execution
+│   ├── technical_agent.py
+│   ├── sentiment_agent.py
+│   ├── flow_agent.py
+│   ├── history_agent.py
+│   ├── risk_agent.py
+│   ├── education_agent.py
+│   └── base_agent.py               # Shared parsing, validation, fallback logic
+├── src/
+│   ├── api/                         # FastAPI application
+│   │   ├── main.py
+│   │   ├── intelligent_orchestrator.py
+│   │   ├── chat_router.py
+│   │   └── routes/
+│   ├── core/
+│   │   └── decision_engine.py       # Weighted signal aggregation
+│   ├── data/
+│   │   ├── market_data_manager.py   # Unified data layer with caching
+│   │   └── alpaca_client.py         # Alpaca + yfinance integration
+│   ├── indicators/
+│   │   └── technical_calculator.py  # 62 technical indicators
+│   └── ml/
+│       ├── ensemble_model.py
+│       ├── lightgbm_flow_model.py
+│       ├── prophet_volatility_model.py
+│       ├── openai_sentiment_model.py
+│       └── rl_trading_agent.py
+├── config/
+│   ├── settings.py
+│   ├── constants.py                 # Signal thresholds, model names, defaults
+│   ├── database.py
+│   └── logging.py
+└── scripts/
+    ├── init_database.py
+    └── supabase_schema.sql
 ```
 
 ---
 
-## 💡 **KEY INNOVATIONS IMPLEMENTED**
+## Agent weight system
 
-1. **✅ Multi-Agent Orchestration** - OpenAI Agents SDK with specialized agents
-2. **✅ Dynamic Weight Assignment** - Scenario-based weight adjustment following flowchart logic  
-3. **✅ OpenAI-First ML Pipeline** - Replaced traditional ML with GPT models
-4. **✅ Real Agent Integration** - RL agent uses actual agent results (NO MOCK DATA)
-5. **✅ Professional Technical Analysis** - 62 indicators using stock-indicators library
-6. **✅ Risk-Based Strike Selection** - Personalized recommendations based on user risk profile
-7. **✅ Real-Time Data Processing** - Live market data with intelligent caching
-8. **✅ Ensemble Decision Making** - Multiple ML models with confidence scoring
-9. **✅ Comprehensive Error Handling** - Robust fallbacks throughout the system
-10. **✅ Production-Ready Architecture** - Scalable, maintainable, and testable codebase
+Base weights and their scenario adjustments:
+
+| Scenario | Technical | Sentiment | Flow | Historical |
+|---|---|---|---|---|
+| Default | 60% | 10% | 10% | 20% |
+| High volatility | 70% | 5% | 15% | 15% |
+| Low volatility | 50% | 15% | 15% | 25% |
+| Strong trend | 70% | 5% | 5% | 20% |
+| Range-bound | 55% | 10% | 15% | 20% |
+
+Weights are renormalized to sum to 1.0 after scenario adjustments. The scenario is detected automatically from the technical agent's output.
 
 ---
 
-## 🎯 **FINAL STATUS SUMMARY**
+## Documentation
 
-**🎉 NEURAL OPTIONS ORACLE++ ML PIPELINE: COMPLETE & OPERATIONAL**
+| Document | Contents |
+|---|---|
+| [API_SPECIFICATIONS.md](API_SPECIFICATIONS.md) | REST endpoints, WebSocket, request/response schemas |
+| [ARCHITECTURE_DETAILS.md](ARCHITECTURE_DETAILS.md) | Service boundaries and component interactions |
+| [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) | Supabase tables, indexes, and Python integration |
+| [AI_AGENT_IMPLEMENTATION.md](AI_AGENT_IMPLEMENTATION.md) | Agent prompts, schemas, and orchestration logic |
+| [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) | Next.js frontend design (planned) |
+| [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) | Container setup and production deployment |
+| [TESTING_STRATEGY.md](TESTING_STRATEGY.md) | Testing approach and coverage targets |
 
-✅ **4 ML Models**: 100% Working (OpenAI Sentiment, LightGBM Flow, Prophet Volatility, Ensemble)
-✅ **6 AI Agents**: Fully Functional (Technical, Sentiment, Flow, History, Risk, Education)  
-✅ **Decision Engine**: Dynamic Weighting System Implemented
-✅ **Real Data Integration**: No Mock Data - All Real Market Data & Agent Results
-✅ **Risk Management**: Strike Selection & Position Sizing Complete
-✅ **Database**: Supabase Integration with Caching
-✅ **Testing**: 100% Pass Rate on All Components
+---
 
-**The Neural Options Oracle++ backend is production-ready and fully operational for intelligent options trading signal generation with real-time market data integration.**
+## Status
+
+The backend API, all six agents, the ML pipeline, and the Supabase integration are implemented and operational. The Next.js frontend is designed (see [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md)) but lives in a separate repository and is not yet connected.
+
+This project uses Alpaca's paper trading environment. No real money is involved.

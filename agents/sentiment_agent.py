@@ -230,7 +230,7 @@ OUTPUT FORMAT (JSON):
             )
             
             content = response.choices[0].message.content.strip()
-            return self._parse_json_from_response(content)
+            return self._parse_json_response(content)
             
         except Exception as e:
             logger.error(f"Error searching news sentiment for {symbol}: {e}")
@@ -279,7 +279,7 @@ OUTPUT FORMAT (JSON):
             )
             
             content = response.choices[0].message.content.strip()
-            return self._parse_json_from_response(content)
+            return self._parse_json_response(content)
             
         except Exception as e:
             logger.error(f"Error searching StockTwits sentiment for {symbol}: {e}")
@@ -326,7 +326,7 @@ OUTPUT FORMAT (JSON):
             )
             
             content = response.choices[0].message.content.strip()
-            return self._parse_json_from_response(content)
+            return self._parse_json_response(content)
             
         except Exception as e:
             logger.error(f"Error searching market psychology for {symbol}: {e}")
@@ -369,35 +369,10 @@ OUTPUT FORMAT (JSON):
             )
             
             content = response.choices[0].message.content.strip()
-            return self._parse_json_from_response(content)
+            return self._parse_json_response(content)
             
         except Exception as e:
             logger.error(f"Error analyzing sentiment with GPT for {symbol}: {e}")
-            return {}
-    
-    def _parse_json_from_response(self, content: str) -> Dict[str, Any]:
-        """Parse JSON from GPT response"""
-        try:
-            # Try multiple JSON extraction patterns
-            json_patterns = [
-                r'\{.*\}',  # Any JSON object
-                r'\{[^{}]*\}',  # Simple JSON object
-            ]
-            
-            for pattern in json_patterns:
-                json_match = re.search(pattern, content, re.DOTALL)
-                if json_match:
-                    try:
-                        json_str = json_match.group()
-                        return json.loads(json_str)
-                    except json.JSONDecodeError:
-                        continue
-            
-            # If no JSON found, return empty dict
-            return {}
-            
-        except Exception as e:
-            logger.error(f"Error parsing JSON from response: {e}")
             return {}
     
     def _validate_sentiment_analysis(self, analysis: Dict, symbol: str) -> Dict:

@@ -1,6 +1,7 @@
 """
 Neural Options Oracle++ FastAPI Main Application
 """
+import asyncio
 import time
 from contextlib import asynccontextmanager
 from typing import Dict, Any
@@ -16,31 +17,44 @@ from config.database import db_manager
 from src.api.dependencies import get_current_session, rate_limiter
 from src.api.routes import analysis, trading, education, portfolio, system
 from src.api.chat_router import router as chat_router
+from src.api.intelligent_orchestrator import IntelligentOrchestrator
 
 logger = get_api_logger()
+
+# Singleton — created once at startup, reused across all requests
+_orchestrator: IntelligentOrchestrator = None
+
+
+def get_orchestrator() -> IntelligentOrchestrator:
+    return _orchestrator
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management"""
-    
+    global _orchestrator
+
     # Startup
     logger.info("Starting Neural Options Oracle++ API Server")
-    
+
     # Setup logging
     setup_logging()
-    
+
     # Test database connection
     db_health = await db_manager.health_check()
     if db_health["status"] != "healthy":
         logger.error(f"Database connection failed: {db_health}")
         raise Exception("Database connection failed")
-    
+
+    # Initialize shared orchestrator once
+    _orchestrator = IntelligentOrchestrator()
+    logger.info("IntelligentOrchestrator singleton initialized")
+
     logger.info("Database connection established")
     logger.info("Neural Options Oracle++ API Server started successfully")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Neural Options Oracle++ API Server")
 
@@ -358,13 +372,12 @@ async def get_hot_stocks():
     try:
         logger.info("🔥 Getting REAL trending stocks from StockTwits...")
         
-        # Import the intelligent orchestrator and web scraper
-        from src.api.intelligent_orchestrator import IntelligentOrchestrator
+        # Use singleton orchestrator + web scraper
         from src.agents.web_scraper_agent import get_web_scraper_agent
         from openai import OpenAI
         import os
-        
-        orchestrator = IntelligentOrchestrator()
+
+        orchestrator = get_orchestrator()
         
         # Initialize web scraper agent with OpenAI
         openai_client = None
@@ -395,69 +408,48 @@ async def get_hot_stocks():
             symbols = [stock["symbol"] for stock in trending_stocks_data]
             logger.info(f"✅ Got real trending symbols: {symbols}")
         
-        hot_stocks = []
-        
-        for i, symbol in enumerate(symbols):
+        async def _process_one_stock(symbol: str, trending_data) -> dict | None:
             try:
-                # Get corresponding trending data if available
-                trending_data = None
-                if trending_stocks_data and i < len(trending_stocks_data):
-                    trending_data = trending_stocks_data[i]
-                
-                # Get market data directly (bypass the failing process_user_query)
                 logger.info(f"📈 Getting market data for {symbol}")
                 market_data = await orchestrator.market_data_manager.get_comprehensive_data(symbol)
-                
-                # Extract real market data
+
                 quote = market_data.get('quote', {})
                 current_price = float(quote.get('price', 0))
                 volume = float(quote.get('volume', 0))
-                
-                # Debug logging for market data
+
                 logger.info(f"📊 Market data for {symbol}: price=${current_price}, volume={volume}")
                 logger.info(f"📊 Quote data: {quote}")
-                
-                
-                # Get change data directly from quote (which now includes yfinance change data)
+
                 change = float(quote.get('change', 0))
                 change_percent = float(quote.get('change_percent', 0))
-                
-                # If change data is missing, try to calculate from previous close
+
                 if change == 0 and change_percent == 0:
                     previous_close = float(quote.get('previous_close', current_price))
                     change = current_price - previous_close
                     change_percent = (change / previous_close) * 100 if previous_close > 0 else 0
-                
-                # Sanity check - if change is too large, log warning but don't zero it out
+
                 if abs(change_percent) > 20:
                     logger.warning(f"Large change detected for {symbol}: {change_percent:.1f}% - verify data")
-                
-                # Only zero out if change is completely unreasonable (>50%)
+
                 if abs(change_percent) > 50:
                     logger.warning(f"Extreme change detected for {symbol}: {change_percent:.1f}% - using 0%")
                     change = 0
                     change_percent = 0
-                
-                # Generate sparkline from real historical data
+
                 historical = market_data.get('historical', [])
-                sparkline_data = []
-                if historical and len(historical) > 0:
-                    recent_prices = historical[-20:]  # Last 20 data points
+                if historical:
+                    recent_prices = historical[-20:]
                     sparkline_data = [{"value": float(bar.get('close', current_price))} for bar in recent_prices]
                 else:
-                    # Fallback sparkline if no historical data
-                    sparkline_data = [{"value": current_price + (i * 0.1)} for i in range(20)]
-                
-                # Extract AI signals (combine StockTwits sentiment + basic analysis)
+                    sparkline_data = [{"value": current_price} for _ in range(20)]
+
                 ai_signals = []
                 ai_score = 50
-                
-                # Add StockTwits sentiment to AI signals
+
                 if trending_data:
                     sentiment = trending_data.get('sentiment', 'Neutral')
                     mentions = trending_data.get('mentions', 0)
                     ai_signals.append(f"StockTwits: {sentiment}")
-                    # Convert mentions to int if it's a string
                     if isinstance(mentions, str):
                         try:
                             mentions = int(mentions)
@@ -465,29 +457,25 @@ async def get_hot_stocks():
                             mentions = 0
                     if mentions > 0:
                         ai_signals.append(f"{mentions} mentions")
-                    
-                    # Boost AI score based on StockTwits sentiment
                     sentiment_score = trending_data.get('sentiment_score', 0.5)
                     if sentiment_score is not None:
                         ai_score = max(ai_score, int(sentiment_score * 100))
-                
-                # Add basic technical signals based on price movement
+
                 if change > 0:
                     ai_signals.append("Price Up")
                     ai_score += 10
                 elif change < 0:
                     ai_signals.append("Price Down")
                     ai_score -= 5
-                
-                # Add volume signal
-                if volume > 1000000:  # High volume
+
+                if volume > 1000000:
                     ai_signals.append("High Volume")
                     ai_score += 5
-                
-                # Ensure AI score is within bounds
+
                 ai_score = max(0, min(100, ai_score))
-                
-                hot_stock = {
+
+                logger.info(f"✅ Processed {symbol}: price=${current_price}, change={change}")
+                return {
                     "symbol": symbol,
                     "name": (trending_data.get('name') if trending_data else None) or market_data.get('company_name', f"{symbol} Inc"),
                     "price": current_price,
@@ -499,14 +487,16 @@ async def get_hot_stocks():
                     "signals": ai_signals or ["Market Data"],
                     "trending": (trending_data and trending_data.get('trending', False)) or ai_score > 75
                 }
-                
-                hot_stocks.append(hot_stock)
-                logger.info(f"✅ Processed {symbol}: price=${current_price}, change={change}")
-                
             except Exception as e:
                 logger.error(f"Error processing {symbol}: {e}")
-                # Continue with other stocks even if one fails
-                continue
+                return None
+
+        paired = [
+            (symbols[i], trending_stocks_data[i] if trending_stocks_data and i < len(trending_stocks_data) else None)
+            for i in range(len(symbols))
+        ]
+        results = await asyncio.gather(*[_process_one_stock(sym, td) for sym, td in paired])
+        hot_stocks = [r for r in results if r is not None]
         
         logger.info(f"✅ Retrieved {len(hot_stocks)} hot stocks with real data")
         
@@ -537,10 +527,8 @@ async def get_agent_analysis(symbol: str):
     try:
         logger.info(f"🤖 Getting agent analysis for {symbol}")
         
-        # Import the intelligent orchestrator
-        from src.api.intelligent_orchestrator import IntelligentOrchestrator
-        orchestrator = IntelligentOrchestrator()
-        
+        orchestrator = get_orchestrator()
+
         # Use intelligent orchestrator to get agent-specific data
         user_context = {'selectedStock': symbol}
         result = await orchestrator.process_user_query(
@@ -575,10 +563,8 @@ async def get_technical_indicators(symbol: str):
     try:
         logger.info(f"📊 Getting technical indicators for {symbol}")
         
-        # Import the intelligent orchestrator
-        from src.api.intelligent_orchestrator import IntelligentOrchestrator
-        orchestrator = IntelligentOrchestrator()
-        
+        orchestrator = get_orchestrator()
+
         # Get technical analysis
         user_context = {'selectedStock': symbol}
         result = await orchestrator.process_user_query(
@@ -607,10 +593,8 @@ async def get_trading_signals(symbol: str):
     try:
         logger.info(f"🔥 Getting real trading signals for {symbol}...")
         
-        # Import the intelligent orchestrator
-        from src.api.intelligent_orchestrator import IntelligentOrchestrator
-        orchestrator = IntelligentOrchestrator()
-        
+        orchestrator = get_orchestrator()
+
         # Get comprehensive analysis from our backend
         user_context = {
             'selectedStock': symbol,

@@ -58,6 +58,7 @@ server.log
 
 # Database
 *.db
+*.sqlite
 *.sqlite3
 
 # Jupyter Notebook

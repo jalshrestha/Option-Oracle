@@ -7,21 +7,18 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
+import time
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.models import Bar, Quote, Trade
 from alpaca.data.requests import StockBarsRequest, StockQuotesRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
 import yfinance as yf
-import requests_cache
 
 from config.settings import settings
 from config.logging import get_data_logger
 
 logger = get_data_logger()
-
-# Cache for yfinance requests (1 hour cache)
-session = requests_cache.CachedSession('market_data_cache', expire_after=3600)
 
 
 class AlpacaMarketDataClient:
@@ -37,8 +34,20 @@ class AlpacaMarketDataClient:
             secret_key=settings.alpaca_secret_key,
             paper=True  # Using paper trading
         )
-        
+        # Cache: symbol -> (yf.Ticker, created_at_timestamp)
+        self._ticker_cache: Dict[str, tuple] = {}
+        self._ticker_cache_ttl = 300  # 5 minutes
+
         logger.info("Alpaca market data client initialized")
+
+    async def _get_ticker(self, symbol: str) -> "yf.Ticker":
+        """Return a cached yfinance Ticker, refreshing after TTL expires."""
+        entry = self._ticker_cache.get(symbol)
+        if entry and (time.monotonic() - entry[1]) < self._ticker_cache_ttl:
+            return entry[0]
+        ticker = await asyncio.to_thread(yf.Ticker, symbol)
+        self._ticker_cache[symbol] = (ticker, time.monotonic())
+        return ticker
     
     async def get_current_quote(self, symbol: str) -> Dict[str, Any]:
         """Get current quote for symbol"""
@@ -52,8 +61,8 @@ class AlpacaMarketDataClient:
                 
                 # Get all data from yfinance first, then supplement with Alpaca bid/ask if good
                 try:
-                    ticker = yf.Ticker(symbol)
-                    info = ticker.info
+                    ticker = await self._get_ticker(symbol)
+                    info = await asyncio.to_thread(lambda: ticker.info)
                     volume = int(info.get('volume', 0))
                     yf_price = float(info.get('currentPrice', info.get('regularMarketPrice', 0)))
                     previous_close = float(info.get('previousClose', info.get('regularMarketPreviousClose', yf_price)))
@@ -99,8 +108,8 @@ class AlpacaMarketDataClient:
         
         # Fallback to yfinance for everything
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            ticker = await self._get_ticker(symbol)
+            info = await asyncio.to_thread(lambda: ticker.info)
             
             # Get change data from yfinance
             current_price = float(info.get('currentPrice', info.get('regularMarketPrice', 0)))
@@ -176,8 +185,8 @@ class AlpacaMarketDataClient:
         
         # Fallback to yfinance
         try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period=period, interval=interval)
+            ticker = await self._get_ticker(symbol)
+            df = await asyncio.to_thread(ticker.history, period=period, interval=interval)
             logger.info(f"Retrieved {len(df)} bars for {symbol} via yfinance")
             return df
             
@@ -244,16 +253,17 @@ class AlpacaMarketDataClient:
         """Get options chain data (using yfinance)"""
         
         try:
-            ticker = yf.Ticker(symbol)
-            
-            # Get options expiration dates
-            expiration_dates = ticker.options
-            
+            ticker = await self._get_ticker(symbol)
+
+            # Get options expiration dates (blocking network call)
+            expiration_dates = await asyncio.to_thread(lambda: ticker.options)
+
             if not expiration_dates:
                 return {'error': 'No options data available'}
-            
-            # Get current stock price
-            current_price = float(ticker.info.get('currentPrice', 100))
+
+            # Get current stock price (reuse cached info)
+            info = await asyncio.to_thread(lambda: ticker.info)
+            current_price = float(info.get('currentPrice', 100))
             
             # Process multiple expirations (up to 3)
             all_options = []
@@ -265,43 +275,32 @@ class AlpacaMarketDataClient:
             
             for exp_date in expiration_dates[:3]:  # Process first 3 expirations
                 try:
-                    options_chain = ticker.option_chain(exp_date)
+                    options_chain = await asyncio.to_thread(ticker.option_chain, exp_date)
                     calls_df = options_chain.calls
                     puts_df = options_chain.puts
                     
-                    # Process call options
-                    for _, call in calls_df.iterrows():
-                        all_options.append({
-                            'symbol': f"{symbol}_{exp_date}_C{call['strike']}",
+                    def _opt_row_to_dict(row: dict, opt_type: str, suffix: str) -> dict:
+                        return {
+                            'symbol': f"{symbol}_{exp_date}_{suffix}{row['strike']}",
                             'underlying_symbol': symbol,
-                            'strike_price': float(call['strike']),
-                            'option_type': 'call',
+                            'strike_price': float(row['strike']),
+                            'option_type': opt_type,
                             'expiration_date': exp_date,
-                            'last_price': float(call.get('lastPrice', 0)),
-                            'bid': float(call.get('bid', 0)),
-                            'ask': float(call.get('ask', 0)),
-                            'volume': int(call.get('volume', 0)) if pd.notna(call.get('volume')) else 0,
-                            'open_interest': int(call.get('openInterest', 0)) if pd.notna(call.get('openInterest')) else 0,
-                            'implied_volatility': float(call.get('impliedVolatility', 0.25)),
-                            'in_the_money': call.get('inTheMoney', False)
-                        })
-                    
-                    # Process put options
-                    for _, put in puts_df.iterrows():
-                        all_options.append({
-                            'symbol': f"{symbol}_{exp_date}_P{put['strike']}",
-                            'underlying_symbol': symbol,
-                            'strike_price': float(put['strike']),
-                            'option_type': 'put',
-                            'expiration_date': exp_date,
-                            'last_price': float(put.get('lastPrice', 0)),
-                            'bid': float(put.get('bid', 0)),
-                            'ask': float(put.get('ask', 0)),
-                            'volume': int(put.get('volume', 0)) if pd.notna(put.get('volume')) else 0,
-                            'open_interest': int(put.get('openInterest', 0)) if pd.notna(put.get('openInterest')) else 0,
-                            'implied_volatility': float(put.get('impliedVolatility', 0.25)),
-                            'in_the_money': put.get('inTheMoney', False)
-                        })
+                            'last_price': float(row.get('lastPrice', 0)),
+                            'bid': float(row.get('bid', 0)),
+                            'ask': float(row.get('ask', 0)),
+                            'volume': int(row.get('volume', 0)) if pd.notna(row.get('volume')) else 0,
+                            'open_interest': int(row.get('openInterest', 0)) if pd.notna(row.get('openInterest')) else 0,
+                            'implied_volatility': float(row.get('impliedVolatility', 0.25)),
+                            'in_the_money': row.get('inTheMoney', False),
+                        }
+
+                    all_options.extend(
+                        _opt_row_to_dict(r, 'call', 'C') for r in calls_df.to_dict('records')
+                    )
+                    all_options.extend(
+                        _opt_row_to_dict(r, 'put', 'P') for r in puts_df.to_dict('records')
+                    )
                     
                     # Update summary
                     call_volume = calls_df['volume'].fillna(0).sum()

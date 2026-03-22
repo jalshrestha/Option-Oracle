@@ -143,7 +143,7 @@ Example responses:
             if not self.openai_client:
                 logger.error("OpenAI client not available for symbol extraction")
                 return None
-            
+
             prompt = f"""
 Extract the stock symbol from this user query. Look for:
 1. Ticker symbols (2-5 uppercase letters like AAPL, TSLA, NVDA)
@@ -156,7 +156,7 @@ Respond with ONLY the stock symbol in uppercase letters, or "NONE" if no stock s
 
 Examples:
 - "analyze AAPL" → AAPL
-- "What's happening with Tesla?" → TSLA  
+- "What's happening with Tesla?" → TSLA
 - "Show me Apple stock" → AAPL
 - "How is the market doing?" → NONE
 - "Buy some Microsoft shares" → MSFT
@@ -172,18 +172,79 @@ Symbol:"""
                 temperature=0.1,
                 max_tokens=10
             )
-            
+
             symbol = response.choices[0].message.content.strip().upper()
-            
+
             if symbol == "NONE" or len(symbol) < 2 or len(symbol) > 5:
                 return None
-            
+
             logger.info(f"✅ OpenAI extracted symbol: {symbol}")
             return symbol
-            
+
         except Exception as e:
             logger.error(f"OpenAI symbol extraction failed: {e}")
             return None
+
+    async def classify_and_extract(self, query: str) -> tuple:
+        """
+        Single OpenAI call that simultaneously classifies intent AND extracts the stock symbol.
+        Returns (symbol_or_None, agent_scores_dict).
+        Replaces the previous pair of sequential extract_stock_symbol + classify_query calls.
+        """
+        if not self.openai_client:
+            return None, {}
+
+        agent_descriptions = "\n".join(
+            [f"- {name}: {desc}" for name, desc in self.available_agents.items()]
+        )
+        prompt = f"""You are an expert AI assistant for a financial trading system.
+
+Given the user query below, return a JSON object with two keys:
+1. "symbol": the stock ticker (2-5 uppercase letters), or null if none found.
+2. "agent_scores": an object mapping agent names to confidence scores (0.0-1.0). Only include agents with score >= 0.3.
+
+Available agents:
+{agent_descriptions}
+
+Classification rules:
+- "analyze [STOCK]" → symbol + technical_analysis, sentiment_analysis, options_flow, historical_analysis at 0.9
+- "buy [STOCK]" / "execute trade" → symbol + trade_execution, technical_analysis, risk_assessment at 0.9
+- "find best stock / budget" → no symbol + all agents at 0.8+
+- "explain / teach" → education at 0.9
+- "portfolio / positions" → portfolio_management at 0.9
+
+User Query: "{query}"
+
+Respond with valid JSON only — no markdown, no explanation."""
+
+        try:
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are a precise financial query classifier. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1,
+                max_tokens=300,
+            )
+            content = response.choices[0].message.content.strip()
+            parsed = json.loads(content)
+
+            raw_symbol = parsed.get("symbol")
+            symbol = raw_symbol.strip().upper() if raw_symbol and isinstance(raw_symbol, str) else None
+            if symbol and (symbol == "NONE" or len(symbol) < 2 or len(symbol) > 5):
+                symbol = None
+
+            raw_scores = parsed.get("agent_scores", {})
+            scores = {k: max(0.0, min(1.0, float(v))) for k, v in raw_scores.items()}
+
+            logger.info(f"✅ classify_and_extract → symbol={symbol}, scores={scores}")
+            return symbol, scores
+
+        except Exception as e:
+            logger.error(f"classify_and_extract failed: {e}")
+            return None, {}
 
 class IntelligentOrchestrator:
     """
@@ -240,12 +301,11 @@ class IntelligentOrchestrator:
         Returns complete analysis with all visualization data
         """
         logger.info(f"🧠 Processing user query: {query}")
-        
-        # Extract stock symbol and classify query
-        symbol = await self.query_classifier.extract_stock_symbol(query)
-        query_scores = await self.query_classifier.classify_query(query)
-        
-        # Default to AAPL if no symbol found
+
+        # Single OpenAI call: extract symbol + classify intent simultaneously
+        symbol, query_scores = await self.query_classifier.classify_and_extract(query)
+
+        # Default to context symbol or AAPL if none found
         if not symbol:
             symbol = user_context.get('selectedStock', 'AAPL')
         
