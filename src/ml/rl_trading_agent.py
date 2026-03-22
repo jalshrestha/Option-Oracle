@@ -859,8 +859,7 @@ Provide analysis in JSON format:
                 # Execute real action
                 reward, execution_info = await self.environment.execute_real_action(action, current_state)
                 
-                # Get next state (after some time simulation)
-                await asyncio.sleep(1)  # Simulate time passage
+                # Get next state
                 next_state = await self.environment.get_current_state(symbol)
                 
                 # Store real experience

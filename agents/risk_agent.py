@@ -219,42 +219,6 @@ Recommend 3-5 appropriate strikes with full risk analysis.
             'agent': self.name
         }
     
-    def _get_mock_options_data(self, symbol: str) -> Dict:
-        """Generate mock options data"""
-        import random
-        
-        current_price = 150.0 + random.uniform(-20, 20)
-        
-        # Generate mock options chain
-        options_chain = []
-        for i in range(-5, 6):  # 11 strikes around current price
-            strike = current_price + (i * 5)  # $5 intervals
-            
-            call_data = {
-                'strike': strike,
-                'type': 'call',
-                'delta': max(0.05, min(0.95, 0.5 + (i * 0.1))),
-                'premium': max(0.5, abs(i * 2) + random.uniform(1, 5)),
-                'iv': random.uniform(0.2, 0.6)
-            }
-            
-            put_data = {
-                'strike': strike,
-                'type': 'put', 
-                'delta': max(-0.95, min(-0.05, -0.5 - (i * 0.1))),
-                'premium': max(0.5, abs(i * 2) + random.uniform(1, 5)),
-                'iv': random.uniform(0.2, 0.6)
-            }
-            
-            options_chain.extend([call_data, put_data])
-        
-        return {
-            'current_price': current_price,
-            'iv_rank': random.uniform(10, 90),
-            'days_to_earnings': random.randint(5, 45),
-            'options_chain': options_chain
-        }
-    
     def _format_options_chain(self, chain: List[Dict]) -> str:
         """Format options chain for prompt"""
         

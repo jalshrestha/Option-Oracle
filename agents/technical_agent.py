@@ -4,7 +4,7 @@ OpenAI Agents SDK v0.3.0 Implementation
 """
 import json
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from .base_agent import BaseAgent
 from config.logging import get_agents_logger
 
@@ -307,45 +307,15 @@ Please provide a comprehensive technical analysis with scenario detection and we
             logger.error(f"Technical analysis failed for {symbol}: {e}")
             return self._get_fallback_analysis(symbol)
     
-    def _get_mock_market_data(self, symbol: str) -> Dict[str, Any]:
-        """Generate mock market data for testing"""
-        
-        # In production, this would fetch real data from Alpaca API
-        import random
-        
-        base_price = 150.0  # Mock base price
-        
-        return {
-            'symbol': symbol,
-            'current_price': base_price + random.uniform(-10, 10),
-            'change_percent': random.uniform(-5, 5),
-            'volume': random.randint(1000000, 5000000),
-            'avg_volume': random.randint(1000000, 3000000),
-            'rsi': random.uniform(20, 80),
-            'macd': random.uniform(-2, 2),
-            'macd_signal': random.uniform(-2, 2),
-            'bb_position': random.uniform(0, 1),
-            'vwap': base_price + random.uniform(-5, 5),
-            'ma5': base_price + random.uniform(-3, 3),
-            'ma20': base_price + random.uniform(-8, 8),
-            'ma50': base_price + random.uniform(-15, 15),
-            'ma200': base_price + random.uniform(-30, 30),
-            'volatility': random.uniform(15, 45),
-            'vix': random.uniform(12, 35)
-        }
-    
     def _validate_analysis(self, analysis: Dict, symbol: str, market_data: Dict) -> Dict[str, Any]:
         """Validate and enhance the analysis response"""
-        
+
         # Ensure required fields exist
-        if 'scenario' not in analysis:
-            analysis['scenario'] = 'range_bound'
-        
-        if 'weighted_score' not in analysis:
-            analysis['weighted_score'] = 0.0
-        
-        if 'confidence' not in analysis:
-            analysis['confidence'] = 0.5
+        self._ensure_fields(analysis, {
+            'scenario': 'range_bound',
+            'weighted_score': 0.0,
+            'confidence': 0.5,
+        })
         
         # Validate numeric ranges
         analysis['weighted_score'] = max(-1.0, min(1.0, analysis['weighted_score']))

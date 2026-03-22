@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from openai import OpenAI
 from config.logging import get_agents_logger
 from config.settings import settings
+from config.constants import (
+    DEFAULT_ACCOUNT_BALANCE, DEFAULT_MAX_POSITION_SIZE,
+    OPTION_CONTRACT_MULTIPLIER, DEFAULT_STOP_LOSS_RATIO, DEFAULT_PROFIT_TARGET_RATIO,
+)
 
 from .base_agent import BaseAgent
 
@@ -178,8 +182,8 @@ class BuyAgent(BaseAgent):
                 return recommendations
             
             # Determine position size based on risk profile
-            max_position_size = user_risk_profile.get('max_position_size', 0.05)  # 5% default
-            account_balance = user_risk_profile.get('account_balance', 100000)  # $100k default
+            max_position_size = user_risk_profile.get('max_position_size', DEFAULT_MAX_POSITION_SIZE)
+            account_balance = user_risk_profile.get('account_balance', DEFAULT_ACCOUNT_BALANCE)
             max_trade_value = account_balance * max_position_size
             
             # Generate recommendations based on signal direction
@@ -237,7 +241,7 @@ class BuyAgent(BaseAgent):
                             risk_score=strike_rec.get('risk_score', 0.3),
                             potential_return=strike_rec.get('potential_return', 0.15),
                             max_loss=strike_rec.get('max_loss', 0.05),
-                            reasoning=f"AI signal: {direction} with {confidence:.1%} confidence"
+                            reasoning=f"AI signal: BUY with {confidence:.1%} confidence"
                         )
                         recommendations.append(rec)
             else:
@@ -300,7 +304,7 @@ class BuyAgent(BaseAgent):
                             risk_score=strike_rec.get('risk_score', 0.3),
                             potential_return=strike_rec.get('potential_return', 0.15),
                             max_loss=strike_rec.get('max_loss', 0.05),
-                            reasoning=f"AI signal: {direction} with {confidence:.1%} confidence"
+                            reasoning=f"AI signal: SELL with {confidence:.1%} confidence"
                         )
                         recommendations.append(rec)
             else:
@@ -392,7 +396,7 @@ class BuyAgent(BaseAgent):
         
         # Calculate quantity based on option price and max trade value
         if best_rec.entry_price and best_rec.entry_price > 0:
-            max_contracts = int(max_trade_value / (best_rec.entry_price * 100))  # Options are 100 shares per contract
+            max_contracts = int(max_trade_value / (best_rec.entry_price * OPTION_CONTRACT_MULTIPLIER))
             quantity = min(max_contracts, 10)  # Cap at 10 contracts
         else:
             quantity = 1
@@ -406,7 +410,7 @@ class BuyAgent(BaseAgent):
                 'expiration_date': best_rec.expiration_date,
                 'quantity': quantity,
                 'estimated_price': best_rec.entry_price,
-                'total_cost': quantity * best_rec.entry_price * 100,
+                'total_cost': quantity * best_rec.entry_price * OPTION_CONTRACT_MULTIPLIER,
                 'confidence': best_rec.confidence,
                 'risk_score': best_rec.risk_score,
                 'potential_return': best_rec.potential_return,
@@ -414,10 +418,10 @@ class BuyAgent(BaseAgent):
                 'reasoning': best_rec.reasoning
             },
             'risk_management': {
-                'stop_loss': best_rec.entry_price * 0.5,  # 50% stop loss
-                'take_profit': best_rec.entry_price * 2.0,  # 100% profit target
+                'stop_loss': best_rec.entry_price * DEFAULT_STOP_LOSS_RATIO,
+                'take_profit': best_rec.entry_price * DEFAULT_PROFIT_TARGET_RATIO,
                 'max_position_size_pct': max_position_size,
-                'portfolio_impact': (quantity * best_rec.entry_price * 100) / account_balance
+                'portfolio_impact': (quantity * best_rec.entry_price * OPTION_CONTRACT_MULTIPLIER) / account_balance
             },
             'execution_timing': {
                 'recommended_entry': 'market_open',  # or 'immediate'
@@ -576,7 +580,7 @@ class BuyAgent(BaseAgent):
         # Check position size
         max_position_size = user_risk_profile.get('max_position_size', 0.05)
         account_balance = user_risk_profile.get('account_balance', 100000)
-        trade_value = recommendation.quantity * recommendation.entry_price * 100
+        trade_value = recommendation.quantity * recommendation.entry_price * OPTION_CONTRACT_MULTIPLIER
         
         if trade_value > account_balance * max_position_size:
             return {'valid': False, 'reason': 'Position size exceeds limits'}

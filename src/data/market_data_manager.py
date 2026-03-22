@@ -49,17 +49,22 @@ class MarketDataManager:
             # Convert historical DataFrame to list of dicts for JSON serialization
             historical_data = []
             if not historical_df.empty:
-                historical_data = [
-                    {
-                        'date': row.name.strftime('%Y-%m-%d'),
-                        'open': float(row['open']),
-                        'high': float(row['high']),
-                        'low': float(row['low']),
-                        'close': float(row['close']),
-                        'volume': int(row['volume'])
-                    }
-                    for _, row in historical_df.iterrows()
-                ]
+                _df = historical_df.copy()
+                _df.columns = [c.lower() for c in _df.columns]
+                _df['date'] = (
+                    _df.index.strftime('%Y-%m-%d')
+                    if hasattr(_df.index, 'strftime')
+                    else _df.index.astype(str).str[:10]
+                )
+                for col in ['open', 'high', 'low', 'close']:
+                    if col in _df.columns:
+                        _df[col] = _df[col].astype(float)
+                if 'volume' in _df.columns:
+                    _df['volume'] = _df['volume'].astype(int)
+                else:
+                    _df['volume'] = 1_000_000
+                keep = [c for c in ['date', 'open', 'high', 'low', 'close', 'volume'] if c in _df.columns]
+                historical_data = _df[keep].to_dict('records')
             
             # Combine all data
             comprehensive_data = {
@@ -174,7 +179,7 @@ class MarketDataManager:
             }
     
     def _determine_market_trend(self, spy_data: Dict) -> str:
-        """Determine overall market trend from SPY data"""
+        """Return 'bullish', 'bearish', or 'neutral' based on SPY price vs its 20/50-day MAs."""
         
         try:
             current_price = spy_data.get('current_price', 400)
@@ -192,7 +197,7 @@ class MarketDataManager:
             return 'neutral'
     
     def _determine_volatility_regime(self, vix_level: float) -> str:
-        """Determine volatility regime based on VIX"""
+        """Return 'low' (<15), 'medium' (15-25), 'high' (25-35), or 'extreme' (>35) based on VIX level."""
         
         if vix_level < 15:
             return 'low'

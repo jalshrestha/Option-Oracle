@@ -11,6 +11,11 @@ from openai import OpenAI
 from config.settings import settings
 from config.logging import get_agents_logger
 from config.database import db_manager
+from config.constants import (
+    BASE_WEIGHTS,
+    SIGNAL_STRONG_BUY, SIGNAL_BUY, SIGNAL_SELL, SIGNAL_STRONG_SELL,
+    STRENGTH_STRONG, STRENGTH_MODERATE,
+)
 
 logger = get_agents_logger()
 
@@ -23,13 +28,8 @@ class OptionsOracleOrchestrator:
         self.agents = {}
         self.initialized = False
         
-        # Agent weights - these will be dynamically adjusted based on market scenario
-        self.base_weights = {
-            'technical': 0.60,    # Technical analysis weight
-            'sentiment': 0.10,    # Sentiment analysis weight  
-            'flow': 0.10,         # Options flow weight
-            'history': 0.20       # Historical patterns weight
-        }
+        # Agent weights - dynamically adjusted based on market scenario
+        self.base_weights = BASE_WEIGHTS.copy()
         
         logger.info("Options Oracle Orchestrator initialized")
     
@@ -75,91 +75,91 @@ class OptionsOracleOrchestrator:
             return False
     
     async def analyze_stock(
-        self, 
-        symbol: str, 
+        self,
+        symbol: str,
         user_risk_profile: Dict,
         analysis_type: str = "full"
     ) -> Dict[str, Any]:
-        """Complete stock analysis using all agents"""
-        
+        """Coordinate the full analysis pipeline for *symbol*."""
         if not self.initialized:
             await self.initialize()
-            
+
         try:
             logger.info(f"🔍 Starting comprehensive analysis for {symbol}")
             start_time = datetime.now()
-            
-            # Step 1: Gather agent analyses in parallel
-            agent_tasks = []
-            for agent_name in ['technical', 'sentiment', 'flow', 'history']:
-                if agent_name in self.agents:
-                    task = asyncio.create_task(
-                        self.agents[agent_name].analyze(symbol),
-                        name=f"{agent_name}_analysis"
-                    )
-                    agent_tasks.append((agent_name, task))
-            
-            # Wait for all analyses to complete
-            agent_results = {}
-            for agent_name, task in agent_tasks:
-                try:
-                    result = await task
-                    agent_results[agent_name] = result
-                    logger.info(f"✅ {agent_name.title()} analysis completed")
-                except Exception as e:
-                    logger.error(f"❌ {agent_name} analysis failed: {e}")
-                    agent_results[agent_name] = {"error": str(e), "confidence": 0.0}
-            
-            # Step 2: Detect market scenario and adjust weights
+
+            agent_results = await self._run_agents(symbol)
             scenario = await self._detect_market_scenario(symbol, agent_results)
             adjusted_weights = self._adjust_weights_for_scenario(scenario)
-            
-            # Step 3: Calculate weighted decision
             decision_score = self._calculate_weighted_decision(agent_results, adjusted_weights)
-            
-            # Step 4: Generate trading signal
-            signal = await self._generate_trading_signal(
-                symbol, decision_score, agent_results, scenario
+            signal = await self._generate_trading_signal(symbol, decision_score, agent_results, scenario)
+            strike_recommendations, educational_content = await asyncio.gather(
+                self.agents['risk'].recommend_strikes(signal, user_risk_profile),
+                self.agents['education'].generate_explanation(symbol, signal, agent_results),
             )
-            
-            # Step 5: Get strike recommendations from risk agent
-            strike_recommendations = await self.agents['risk'].recommend_strikes(
-                signal, user_risk_profile
+
+            final_analysis = self._build_output(
+                symbol, user_risk_profile, start_time,
+                scenario, adjusted_weights, agent_results,
+                decision_score, signal, strike_recommendations, educational_content,
             )
-            
-            # Step 6: Generate educational content
-            educational_content = await self.agents['education'].generate_explanation(
-                symbol, signal, agent_results
-            )
-            
-            # Calculate analysis duration
-            analysis_time = (datetime.now() - start_time).total_seconds()
-            
-            # Compile final analysis
-            final_analysis = {
-                'symbol': symbol,
-                'timestamp': datetime.now().isoformat(),
-                'analysis_time_seconds': analysis_time,
-                'market_scenario': scenario,
-                'agent_weights': adjusted_weights,
-                'agent_results': agent_results,
-                'decision_score': decision_score,
-                'signal': signal,
-                'strike_recommendations': strike_recommendations,
-                'educational_content': educational_content,
-                'confidence': self._calculate_overall_confidence(agent_results),
-                'risk_profile': user_risk_profile
-            }
-            
-            # Save analysis to database
             await self._save_analysis_to_db(final_analysis)
-            
+
             logger.info(f"🎉 Analysis complete for {symbol}: {signal['direction']} signal with {final_analysis['confidence']:.2f} confidence")
             return final_analysis
-            
+
         except Exception as e:
             logger.error(f"Analysis failed for {symbol}: {e}")
             raise
+
+    async def _run_agents(self, symbol: str) -> Dict[str, Any]:
+        """Run the four core analysis agents in parallel and return their results."""
+        agent_names = ['technical', 'sentiment', 'flow', 'history']
+        tasks = [
+            self.agents[name].analyze(symbol)
+            for name in agent_names
+            if name in self.agents
+        ]
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        results = {}
+        for name, result in zip(agent_names, raw_results):
+            if isinstance(result, Exception):
+                logger.error(f"❌ {name} analysis failed: {result}")
+                results[name] = {"error": str(result), "confidence": 0.0}
+            else:
+                logger.info(f"✅ {name.title()} analysis completed")
+                results[name] = result
+        return results
+
+    def _build_output(
+        self,
+        symbol: str,
+        user_risk_profile: Dict,
+        start_time,
+        scenario: str,
+        adjusted_weights: Dict,
+        agent_results: Dict,
+        decision_score: float,
+        signal: Dict,
+        strike_recommendations: Any,
+        educational_content: Any,
+    ) -> Dict[str, Any]:
+        """Assemble the final analysis dict from all pipeline outputs."""
+        return {
+            'symbol': symbol,
+            'timestamp': datetime.now().isoformat(),
+            'analysis_time_seconds': (datetime.now() - start_time).total_seconds(),
+            'market_scenario': scenario,
+            'agent_weights': adjusted_weights,
+            'agent_results': agent_results,
+            'decision_score': decision_score,
+            'signal': signal,
+            'strike_recommendations': strike_recommendations,
+            'educational_content': educational_content,
+            'confidence': self._calculate_overall_confidence(agent_results),
+            'risk_profile': user_risk_profile,
+        }
     
     async def execute_buy_request(
         self, 
@@ -247,7 +247,12 @@ class OptionsOracleOrchestrator:
             return 'range_bound'  # Default scenario
     
     def _adjust_weights_for_scenario(self, scenario: str) -> Dict[str, float]:
-        """Dynamically adjust agent weights based on market scenario"""
+        """
+        Return a copy of base_weights with scenario-specific deltas applied, then renormalized to sum to 1.0.
+
+        Each scenario entry in scenario_adjustments maps agent names to signed float deltas
+        (e.g., +0.10 for technical means increase its weight by 10 pp before renormalization).
+        """
         
         weights = self.base_weights.copy()
         
@@ -331,36 +336,28 @@ class OptionsOracleOrchestrator:
     ) -> Dict[str, Any]:
         """Generate trading signal from decision score"""
         
-        # Signal thresholds
-        thresholds = {
-            'strong_buy': 0.6,
-            'buy': 0.3,
-            'sell': -0.3,
-            'strong_sell': -0.6
-        }
-        
         # Determine direction
-        if decision_score >= thresholds['strong_buy']:
+        if decision_score >= SIGNAL_STRONG_BUY:
             direction = 'STRONG_BUY'
             strategy_type = 'aggressive_bullish'
-        elif decision_score >= thresholds['buy']:
+        elif decision_score >= SIGNAL_BUY:
             direction = 'BUY'
             strategy_type = 'moderate_bullish'
-        elif decision_score <= thresholds['strong_sell']:
+        elif decision_score <= SIGNAL_STRONG_SELL:
             direction = 'STRONG_SELL'
             strategy_type = 'aggressive_bearish'
-        elif decision_score <= thresholds['sell']:
+        elif decision_score <= SIGNAL_SELL:
             direction = 'SELL'
             strategy_type = 'moderate_bearish'
         else:
             direction = 'HOLD'
             strategy_type = 'neutral'
-        
+
         # Determine strength
         abs_score = abs(decision_score)
-        if abs_score >= 0.7:
+        if abs_score >= STRENGTH_STRONG:
             strength = 'strong'
-        elif abs_score >= 0.4:
+        elif abs_score >= STRENGTH_MODERATE:
             strength = 'moderate'
         else:
             strength = 'weak'
