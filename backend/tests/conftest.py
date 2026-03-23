@@ -3,6 +3,24 @@ Shared pytest fixtures for all test layers.
 """
 import asyncio
 import os
+
+# ---------------------------------------------------------------------------
+# CI / test environment stubs — must be set BEFORE any project module import,
+# because config/settings.py instantiates Settings() at module level and the
+# model_validator requires an API key for the active LLM provider.
+# These values are never used for real API calls; all LLM calls are mocked.
+# ---------------------------------------------------------------------------
+if not os.environ.get("OPENAI_API_KEY"):
+    os.environ["OPENAI_API_KEY"] = "sk-test-placeholder-for-ci"
+if not os.environ.get("GEMINI_API_KEY"):
+    os.environ["GEMINI_API_KEY"] = "test-gemini-placeholder-for-ci"
+if not os.environ.get("DATABASE_URL"):
+    os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@localhost:5432/options_oracle_test"
+if not os.environ.get("SUPABASE_URL"):
+    os.environ["SUPABASE_URL"] = "https://placeholder.supabase.co"
+if not os.environ.get("SUPABASE_SERVICE_KEY"):
+    os.environ["SUPABASE_SERVICE_KEY"] = "test-placeholder-key"
+
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
