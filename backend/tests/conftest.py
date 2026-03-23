@@ -31,6 +31,19 @@ from httpx import AsyncClient, ASGITransport
 
 
 # ---------------------------------------------------------------------------
+# Rate-limit cache reset — prevents hit counts from bleeding across tests
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def reset_rate_cache():
+    """Clear the in-memory rate-limit cache before every test."""
+    from src.api.dependencies import _rate_cache
+    _rate_cache.clear()
+    yield
+    _rate_cache.clear()
+
+
+# ---------------------------------------------------------------------------
 # Event loop
 # ---------------------------------------------------------------------------
 

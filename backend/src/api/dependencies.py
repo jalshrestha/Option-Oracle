@@ -1,6 +1,7 @@
 """
 FastAPI dependency providers — DB session, services, session validation, and rate limiting.
 """
+import functools
 import math
 import time
 from threading import Lock
@@ -40,6 +41,7 @@ def _check_rate_limit(client_ip: str, max_requests: int) -> None:
         _rate_cache[key] = count
 
 
+@functools.lru_cache(maxsize=None)
 def get_rate_limiter(max_requests: int = 60):
     """Return a FastAPI ``Depends``-compatible function enforcing per-IP rate limits."""
     def _dependency(request: Request) -> None:

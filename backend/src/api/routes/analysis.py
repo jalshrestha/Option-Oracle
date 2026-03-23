@@ -4,7 +4,7 @@ All business logic lives in AnalysisService.
 """
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 
 from src.api.dependencies import (
     get_analysis_service,
@@ -22,7 +22,7 @@ _default_limit = get_rate_limiter(max_requests=60)
 
 @router.post("/analyze/{symbol}", response_model=AnalysisResponse)
 async def analyze_stock(
-    symbol: str,
+    symbol: str = Path(..., min_length=1, max_length=5, pattern=r"^[A-Za-z]+$"),
     service: AnalysisService = Depends(get_analysis_service),
     session: Dict[str, Any] = Depends(get_current_session),
     _rl: None = Depends(_analyze_limit),
