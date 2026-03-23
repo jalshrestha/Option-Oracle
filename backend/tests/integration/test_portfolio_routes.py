@@ -4,7 +4,7 @@ PortfolioService is overridden via FastAPI dependency_overrides — no live DB n
 """
 import pytest
 from unittest.mock import AsyncMock
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from src.api.dependencies import get_current_session, get_portfolio_service, get_rate_limiter
 from src.schemas.portfolio import GreeksSchema, PortfolioSummaryResponse, RiskMetricsResponse
@@ -65,7 +65,7 @@ def portfolio_app():
 @pytest.mark.asyncio
 async def test_get_portfolio_summary_returns_200(portfolio_app):
     app, mock_service = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/portfolio/summary")
     assert resp.status_code == 200
     data = resp.json()
@@ -77,7 +77,7 @@ async def test_get_portfolio_summary_returns_200(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_portfolio_summary_calls_service(portfolio_app):
     app, mock_service = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.get("/api/v1/portfolio/summary")
     mock_service.get_summary.assert_called_once_with("test-token")
 
@@ -85,7 +85,7 @@ async def test_get_portfolio_summary_calls_service(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_greeks_returns_200(portfolio_app):
     app, mock_service = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/portfolio/greeks")
     assert resp.status_code == 200
     data = resp.json()
@@ -96,7 +96,7 @@ async def test_get_greeks_returns_200(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_greeks_calls_service(portfolio_app):
     app, mock_service = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.get("/api/v1/portfolio/greeks")
     mock_service.get_greeks.assert_called_once_with("test-token")
 
@@ -104,7 +104,7 @@ async def test_get_greeks_calls_service(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_risk_metrics_returns_200(portfolio_app):
     app, mock_service = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/portfolio/risk")
     assert resp.status_code == 200
     data = resp.json()
@@ -115,7 +115,7 @@ async def test_get_risk_metrics_returns_200(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_risk_metrics_calls_service(portfolio_app):
     app, mock_service = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.get("/api/v1/portfolio/risk")
     mock_service.get_risk_metrics.assert_called_once_with("test-token")
 
@@ -123,7 +123,7 @@ async def test_get_risk_metrics_calls_service(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_portfolio_positions_returns_200(portfolio_app):
     app, _ = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/portfolio/positions")
     assert resp.status_code == 200
     data = resp.json()
@@ -134,7 +134,7 @@ async def test_get_portfolio_positions_returns_200(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_performance_stub_returns_200(portfolio_app):
     app, _ = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/portfolio/performance")
     assert resp.status_code == 200
 
@@ -142,7 +142,7 @@ async def test_get_performance_stub_returns_200(portfolio_app):
 @pytest.mark.asyncio
 async def test_get_alerts_stub_returns_empty_list(portfolio_app):
     app, _ = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/portfolio/alerts")
     assert resp.status_code == 200
     assert resp.json() == []
@@ -152,7 +152,7 @@ async def test_get_alerts_stub_returns_empty_list(portfolio_app):
 async def test_full_portfolio_flow(portfolio_app):
     """Verify summary → greeks → risk all use the same session token."""
     app, mock_service = portfolio_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.get("/api/v1/portfolio/summary")
         await client.get("/api/v1/portfolio/greeks")
         await client.get("/api/v1/portfolio/risk")

@@ -4,7 +4,7 @@ Services are overridden via FastAPI dependency_overrides — no live DB or OpenA
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from src.api.dependencies import get_analysis_service, get_current_session, get_rate_limiter
 from src.schemas.analysis import AnalysisResponse, SignalSchema
@@ -85,7 +85,7 @@ def analysis_app():
 @pytest.mark.asyncio
 async def test_health_check():
     from src.api.main import app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Health check doesn't need session auth
         resp = await client.get("/health")
     assert resp.status_code in (200, 503)  # 503 if DB not available in test env
@@ -94,7 +94,7 @@ async def test_health_check():
 @pytest.mark.asyncio
 async def test_analyze_stock_returns_200(analysis_app):
     app, mock_service = analysis_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/api/v1/analysis/analyze/AAPL")
     assert resp.status_code == 200
     data = resp.json()
@@ -106,7 +106,7 @@ async def test_analyze_stock_returns_200(analysis_app):
 @pytest.mark.asyncio
 async def test_analyze_stock_calls_service(analysis_app):
     app, mock_service = analysis_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/analysis/analyze/TSLA")
     mock_service.analyze.assert_called_once_with(
         "TSLA", {"risk_tolerance": "moderate"}
@@ -116,7 +116,7 @@ async def test_analyze_stock_calls_service(analysis_app):
 @pytest.mark.asyncio
 async def test_analyze_stock_invalid_symbol_raises_422(analysis_app):
     app, _ = analysis_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/api/v1/analysis/analyze/TOOLONG")
     assert resp.status_code == 422
 
@@ -124,7 +124,7 @@ async def test_analyze_stock_invalid_symbol_raises_422(analysis_app):
 @pytest.mark.asyncio
 async def test_get_history_returns_200(analysis_app):
     app, mock_service = analysis_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/analysis/history/AAPL")
     assert resp.status_code == 200
     data = resp.json()
@@ -135,7 +135,7 @@ async def test_get_history_returns_200(analysis_app):
 @pytest.mark.asyncio
 async def test_get_history_calls_service_with_upper_symbol(analysis_app):
     app, mock_service = analysis_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.get("/api/v1/analysis/history/aapl")
     mock_service.get_history.assert_called_once_with("AAPL", limit=10)
 
@@ -143,7 +143,7 @@ async def test_get_history_calls_service_with_upper_symbol(analysis_app):
 @pytest.mark.asyncio
 async def test_get_supported_symbols_returns_200():
     from src.api.main import app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/analysis/symbols")
     assert resp.status_code == 200
     data = resp.json()

@@ -5,7 +5,7 @@ import re
 import uuid
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -79,7 +79,7 @@ def test_existing_response_headers_preserved():
 @pytest.mark.asyncio
 async def test_request_id_present_on_async_client():
     app = _make_app()
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/")
     assert "X-Request-ID" in resp.headers
     assert uuid.UUID(resp.headers["X-Request-ID"]).version == 4

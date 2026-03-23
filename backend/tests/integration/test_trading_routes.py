@@ -4,7 +4,7 @@ Services are overridden via FastAPI dependency_overrides — no live DB needed.
 """
 import pytest
 from unittest.mock import AsyncMock
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from src.api.dependencies import (
     get_current_session,
@@ -93,7 +93,7 @@ def trading_app():
 @pytest.mark.asyncio
 async def test_execute_trade_returns_200(trading_app):
     app, mock_trading, _ = trading_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/trading/execute",
             json={"symbol": "AAPL", "action": "buy", "quantity": 1},
@@ -107,7 +107,7 @@ async def test_execute_trade_returns_200(trading_app):
 @pytest.mark.asyncio
 async def test_execute_trade_calls_service(trading_app):
     app, mock_trading, _ = trading_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post(
             "/api/v1/trading/execute",
             json={"symbol": "TSLA", "action": "buy", "quantity": 2},
@@ -121,7 +121,7 @@ async def test_execute_trade_calls_service(trading_app):
 @pytest.mark.asyncio
 async def test_execute_trade_invalid_action_raises_422(trading_app):
     app, _, _ = trading_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/trading/execute",
             json={"symbol": "AAPL", "action": "short", "quantity": 1},
@@ -132,7 +132,7 @@ async def test_execute_trade_invalid_action_raises_422(trading_app):
 @pytest.mark.asyncio
 async def test_close_position_returns_200(trading_app):
     app, mock_trading, _ = trading_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/api/v1/trading/positions/pos-abc-123/close")
     assert resp.status_code == 200
     data = resp.json()
@@ -143,7 +143,7 @@ async def test_close_position_returns_200(trading_app):
 @pytest.mark.asyncio
 async def test_close_position_calls_service(trading_app):
     app, mock_trading, _ = trading_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/trading/positions/pos-xyz/close")
     mock_trading.close_position.assert_called_once_with("pos-xyz")
 
@@ -151,7 +151,7 @@ async def test_close_position_calls_service(trading_app):
 @pytest.mark.asyncio
 async def test_get_portfolio_summary_returns_200(trading_app):
     app, _, mock_portfolio = trading_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/trading/portfolio/summary")
     assert resp.status_code == 200
     data = resp.json()

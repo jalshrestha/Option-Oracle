@@ -251,3 +251,7 @@ Provide comprehensive flow analysis with this REAL options data.
             'symbol': symbol,
             'agent': self.name
         }
+
+
+# Alias for test compatibility
+FlowAgent = OptionsFlowAgent

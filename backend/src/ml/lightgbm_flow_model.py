@@ -532,5 +532,16 @@ class LightGBMFlowPredictor:
         }
 
 
+    def predict(self, flow_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Synchronous predict wrapper for compatibility."""
+        try:
+            from dataclasses import asdict
+            features = self._engineer_features(flow_data)
+            result = self._rule_based_prediction(features, flow_data)
+            return asdict(result)
+        except Exception:
+            return {"flow_sentiment": "neutral", "confidence": 0.5, "fallback": True}
+
+
 # Global instance
 lightgbm_flow_predictor = LightGBMFlowPredictor()

@@ -37,10 +37,8 @@ class TestSettingsLoad:
 
         import importlib
         import config.settings as settings_module
-        importlib.reload(settings_module)
-
         with pytest.raises((ValidationError, ValueError, Exception)):
-            settings_module.Settings()
+            importlib.reload(settings_module)
 
     def test_invalid_openai_key_format_raises(self, monkeypatch):
         """An OpenAI key that doesn't start with 'sk-' should fail validation."""
@@ -49,7 +47,5 @@ class TestSettingsLoad:
 
         import importlib
         import config.settings as settings_module
-        importlib.reload(settings_module)
-
         with pytest.raises((ValidationError, ValueError, Exception)):
-            settings_module.Settings()
+            importlib.reload(settings_module)

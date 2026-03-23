@@ -580,5 +580,25 @@ class ProphetVolatilityPredictor:
         }
 
 
+    def predict(self, symbol: str, data) -> Dict[str, Any]:
+        """Synchronous predict wrapper for compatibility."""
+        try:
+            from dataclasses import asdict
+            if isinstance(data, pd.Series):
+                if len(data) == 0:
+                    return {"current_volatility": 0.0, "predicted_volatility": 0.0, "fallback": True}
+                df = data.to_frame(name='close')
+            elif isinstance(data, pd.DataFrame):
+                df = data.copy()
+                if 'Close' in df.columns and 'close' not in df.columns:
+                    df = df.rename(columns={'Close': 'close'})
+            else:
+                return {"current_volatility": 25.0, "predicted_volatility": 25.0, "fallback": True}
+            result = self._statistical_prediction(symbol, df, 30)
+            return asdict(result)
+        except Exception:
+            return {"current_volatility": 25.0, "predicted_volatility": 25.0, "fallback": True}
+
+
 # Global instance
 prophet_volatility_predictor = ProphetVolatilityPredictor()

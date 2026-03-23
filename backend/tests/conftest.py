@@ -27,7 +27,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pandas as pd
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient against the FastAPI app — no live server needed."""
     from src.api.main import create_app
     app = create_app()
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
 

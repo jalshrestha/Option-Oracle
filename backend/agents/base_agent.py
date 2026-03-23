@@ -21,7 +21,7 @@ class BaseAgent(ABC):
         self.client = client
         self.name = name
         # Expose model name for logging/status — derived from the client
-        self.model = client.model_name
+        self.model = client.model_name if client else "unknown"
         self.initialized = False
         self.system_instructions = ""
 

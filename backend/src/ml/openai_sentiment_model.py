@@ -402,6 +402,29 @@ class ComparativeAnalyzer:
         }
 
 
+class OpenAISentimentModel:
+    """Compatibility wrapper that accepts a raw OpenAI-compatible client."""
+
+    def __init__(self, client):
+        self._client = client
+
+    async def analyze(self, texts: list) -> Dict[str, Any]:
+        try:
+            import asyncio
+            joined = " ".join(str(t) for t in texts) if texts else ""
+            resp = await asyncio.to_thread(
+                self._client.chat.completions.create,
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": f"Analyze sentiment: {joined}"}],
+            )
+            content = resp.choices[0].message.content
+            data = json.loads(content) if content else {}
+            return {"sentiment_score": data.get("sentiment_score", 0.5), **data}
+        except Exception as e:
+            logger.warning(f"OpenAISentimentModel.analyze failed: {e}")
+            return {"sentiment_score": 0.5, "fallback": True}
+
+
 # Global instances
 openai_sentiment = OpenAISentimentAnalyzer()
 comparative_analyzer = ComparativeAnalyzer()

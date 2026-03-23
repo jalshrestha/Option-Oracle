@@ -363,7 +363,7 @@ OUTPUT FORMAT (JSON):
             
         except Exception as e:
             logger.error(f"Error analyzing sentiment with GPT for {symbol}: {e}")
-            return {}
+            return self._get_fallback_response()
     
     def _validate_sentiment_analysis(self, analysis: Dict, symbol: str) -> Dict:
         """Validate sentiment analysis"""

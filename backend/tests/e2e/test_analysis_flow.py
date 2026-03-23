@@ -4,7 +4,7 @@ E2E test: analysis flow — HTTP POST → orchestrator (mocked) → signal saved
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from src.api.dependencies import get_analysis_service, get_current_session, get_rate_limiter
 from src.schemas.analysis import AnalysisResponse, SignalSchema
@@ -66,7 +66,7 @@ def e2e_app():
 async def test_analyze_flow_end_to_end(e2e_app):
     """POST /analyze/AAPL → service.analyze called → 200 with AnalysisResponse shape."""
     app, mock_service = e2e_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/api/v1/analysis/analyze/AAPL")
 
     assert resp.status_code == 200
@@ -81,7 +81,7 @@ async def test_analyze_flow_end_to_end(e2e_app):
 async def test_analyze_then_get_history(e2e_app):
     """Analyze a symbol then retrieve its signal history."""
     app, mock_service = e2e_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         post_resp = await client.post("/api/v1/analysis/analyze/AAPL")
         get_resp = await client.get("/api/v1/analysis/history/AAPL")
 
@@ -95,7 +95,7 @@ async def test_analyze_then_get_history(e2e_app):
 @pytest.mark.asyncio
 async def test_symbols_endpoint_available_without_session(e2e_app):
     app, _ = e2e_app
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/api/v1/analysis/symbols")
     assert resp.status_code == 200
     assert "AAPL" in resp.json()["popular"]
