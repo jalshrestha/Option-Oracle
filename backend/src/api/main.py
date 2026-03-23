@@ -574,6 +574,52 @@ async def get_trading_signals(symbol: str):
             "error": str(e)
         }
 
+@app.get("/api/v1/options/{symbol}")
+async def get_options_chain(symbol: str, expiry: str = None):
+    """Get options chain data for a symbol"""
+    try:
+        from src.data.alpaca_client import AlpacaMarketDataClient
+        client = AlpacaMarketDataClient()
+        data = await client.get_options_data(symbol)
+
+        options = data.get('options_chain', [])
+        expirations = data.get('expirations', [])
+        selected_expiry = expiry or (expirations[0] if expirations else None)
+
+        if selected_expiry:
+            options = [o for o in options if o.get('expiration_date') == selected_expiry]
+
+        calls = [o for o in options if o.get('option_type') == 'call']
+        puts  = [o for o in options if o.get('option_type') == 'put']
+
+        def _row(o, otype):
+            return {
+                "strike": o["strike_price"],
+                "type": otype,
+                "last": o["last_price"],
+                "bid": o["bid"],
+                "ask": o["ask"],
+                "volume": o["volume"],
+                "open_interest": o["open_interest"],
+                "iv": o["implied_volatility"],
+                "delta": 0.0,
+                "itm": o.get("in_the_money", False),
+            }
+
+        return {
+            "symbol": symbol,
+            "expiry": selected_expiry,
+            "calls": [_row(o, "call") for o in calls],
+            "puts":  [_row(o, "put")  for o in puts],
+            "put_call_ratio": data.get("put_call_ratio", 1.0),
+            "total_call_volume": data.get("total_call_volume", 0),
+            "total_put_volume": data.get("total_put_volume", 0),
+        }
+    except Exception as e:
+        logger.error(f"Options chain error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Options data failed: {str(e)}")
+
+
 # Trading command endpoint for chat
 @app.post("/api/v1/chat/trade")
 async def process_trading_command(message_data: ChatMessage):

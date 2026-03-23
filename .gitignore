@@ -23,6 +23,9 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Exception: Next.js frontend source lib (not Python libs)
+!Frontend/lib/
+!Frontend/lib/**
 parts/
 sdist/
 var/
@@ -220,6 +223,10 @@ sklearn/
 models/
 checkpoints/
 weights/
+
+# Exception: SQLAlchemy ORM models (source code, not ML models)
+!backend/src/models/
+!backend/src/models/**
 
 # GPU cache
 .nv_cache/
