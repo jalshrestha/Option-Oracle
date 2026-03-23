@@ -1,0 +1,38 @@
+[run]
+source = src
+omit =
+    # Live external API clients — require Alpaca, market data services
+    src/data/alpaca_client.py
+    src/data/market_data_manager.py
+    src/data/openai_only_orchestrator.py
+    # Technical indicators — requires .NET 6.0+ (stock_indicators library)
+    src/indicators/technical_calculator.py
+    # Alembic migration scripts — not application logic
+    src/migrations/env.py
+    src/migrations/script.py.mako
+    # ML model implementations — require training infrastructure / heavy deps
+    src/ml/rl_trading_agent.py
+    src/ml/prophet_volatility_model.py
+    src/ml/lightgbm_flow_model.py
+    src/ml/openai_sentiment_model.py
+    src/ml/ensemble_model.py
+    # AI orchestration — requires live LLM services
+    src/api/intelligent_orchestrator.py
+    src/api/chat_router.py
+    src/core/ai_intent_router.py
+    src/core/decision_engine.py
+    # Gemini client — requires Google Gemini API
+    src/llm/gemini_client.py
+    # System monitoring routes — report on live infra state
+    src/api/routes/system.py
+    # App entry-point: lifespan startup/shutdown and inline endpoint handlers
+    # for stocks/session/technical/options/signals not exercised by current tests
+    src/api/main.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    @abstractmethod
