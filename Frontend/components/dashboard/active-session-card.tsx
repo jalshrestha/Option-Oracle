@@ -10,12 +10,6 @@ import { formatCurrency } from '@/lib/utils/format'
 export function ActiveSessionCard() {
   const { data: portfolio, isLoading } = usePortfolioSummary()
 
-  // Mock data for demo
-  const displayData = portfolio || {
-    total_value: 100000,
-    open_positions: 0,
-  }
-
   return (
     <Card className="glass dark:glass border-border">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -39,7 +33,7 @@ export function ActiveSessionCard() {
             <div>
               <p className="text-xs text-muted-foreground">Paper Trading Balance</p>
               <p className="font-mono text-2xl font-bold tabular-nums text-foreground">
-                {formatCurrency(displayData.total_value)}
+                {formatCurrency(portfolio?.total_value ?? 0)}
               </p>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
@@ -48,12 +42,12 @@ export function ActiveSessionCard() {
                 <span className="text-sm text-muted-foreground">Open Positions</span>
               </div>
               <span className="font-mono text-sm font-semibold">
-                {displayData.open_positions}
+                {portfolio?.open_positions ?? 0}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-green-500" />
-              <span className="text-xs text-muted-foreground">Session Token Active</span>
+              <span className="text-xs text-muted-foreground">Authenticated</span>
             </div>
           </>
         )}

@@ -374,6 +374,11 @@ async def get_hot_stocks(
         else:
             symbols = [stock["symbol"] for stock in trending_stocks_data]
             logger.info(f"✅ Got real trending symbols: {symbols}")
+
+        # Always include market index ETFs so the Market Pulse card has data
+        for idx_sym in ["SPY", "QQQ", "IWM"]:
+            if idx_sym not in symbols:
+                symbols.append(idx_sym)
         
         async def _process_one_stock(symbol: str, trending_data) -> dict | None:
             try:
