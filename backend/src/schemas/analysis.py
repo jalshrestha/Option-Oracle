@@ -6,6 +6,18 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class RecentSignalItem(BaseModel):
+    """A compact signal item for the recent-signals-across-all-symbols endpoint."""
+
+    id: str
+    symbol: str
+    direction: Literal["BUY", "SELL", "HOLD", "STRONG_BUY", "STRONG_SELL"]
+    strength: Optional[Literal["strong", "moderate", "weak"]] = None
+    confidence_score: float
+    market_scenario: str
+    created_at: Optional[str] = None
+
+
 class AnalysisRequest(BaseModel):
     """Request body / path parameter for a stock analysis."""
 

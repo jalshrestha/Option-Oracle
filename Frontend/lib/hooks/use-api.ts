@@ -12,6 +12,9 @@ import {
   getEducationContent,
   getLearningPath,
   getGlossary,
+  getRecentSignals,
+  getSystemMetrics,
+  getPortfolioPerformance,
 } from '@/lib/api/client'
 import type {
   HotStock,
@@ -24,6 +27,8 @@ import type {
   EducationContent,
   LearningPath,
   GlossaryTerm,
+  RecentSignalItem,
+  SystemMetrics,
 } from '@/lib/api/types'
 
 // Hot stocks - revalidate every 60s
@@ -118,4 +123,39 @@ export function useGlossary(search?: string, category?: string) {
   return useSWR<GlossaryTerm[]>(key, () => getGlossary(search, category), {
     revalidateOnFocus: false,
   })
+}
+
+// Recent signals across all symbols - revalidate every 30s
+export function useRecentSignals(limit = 20) {
+  return useSWR<RecentSignalItem[]>(
+    `recent-signals-${limit}`,
+    () => getRecentSignals(limit),
+    {
+      refreshInterval: 30000,
+      revalidateOnFocus: false,
+    }
+  )
+}
+
+// System metrics
+export function useSystemMetrics(type?: 'performance' | 'business' | 'errors') {
+  return useSWR<SystemMetrics>(
+    `system-metrics-${type || 'all'}`,
+    () => getSystemMetrics(type),
+    {
+      refreshInterval: 15000,
+      revalidateOnFocus: false,
+    }
+  )
+}
+
+// Portfolio performance history
+export function usePortfolioPerformance() {
+  return useSWR(
+    'portfolio-performance',
+    () => getPortfolioPerformance(),
+    {
+      revalidateOnFocus: false,
+    }
+  )
 }

@@ -6,12 +6,22 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Path
 
+from fastapi import Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.api.dependencies import (
     get_analysis_service,
     get_current_session,
+    get_db,
     get_rate_limiter,
 )
-from src.schemas.analysis import AnalysisRequest, AnalysisResponse, SignalSchema
+from src.repositories.signals import TradingSignalRepository
+from src.schemas.analysis import (
+    AnalysisRequest,
+    AnalysisResponse,
+    RecentSignalItem,
+    SignalSchema,
+)
 from src.services.analysis_service import AnalysisService
 
 router = APIRouter()
@@ -43,6 +53,36 @@ async def get_analysis_history(
 ) -> List[SignalSchema]:
     """Return recent signals for *symbol*, newest first."""
     return await service.get_history(symbol.upper(), limit=limit)
+
+
+@router.get("/signals/recent", response_model=List[RecentSignalItem])
+async def get_recent_signals(
+    limit: int = Query(default=20, ge=1, le=100),
+    session: Dict[str, Any] = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(_default_limit),
+) -> List[RecentSignalItem]:
+    """Return the most recent trading signals across all symbols."""
+    repo = TradingSignalRepository(db)
+    rows = await repo.get_recent_all(limit=limit)
+    items = []
+    for row in rows:
+        items.append(
+            RecentSignalItem(
+                id=str(row.get("id", "")),
+                symbol=row.get("symbol", ""),
+                direction=row.get("direction", "HOLD"),
+                strength=row.get("strength"),
+                confidence_score=float(row.get("confidence_score", 0.0)),
+                market_scenario=row.get("market_scenario", "NEUTRAL"),
+                created_at=(
+                    row["created_at"].isoformat()
+                    if row.get("created_at")
+                    else None
+                ),
+            )
+        )
+    return items
 
 
 @router.get("/symbols")

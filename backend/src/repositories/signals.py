@@ -55,3 +55,15 @@ class TradingSignalRepository(BaseRepository):
         """Return the single most recent signal for a symbol, or None."""
         records = await self.get_by_symbol(symbol, limit=1)
         return records[0] if records else None
+
+    async def get_recent_all(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return the most recent signals across all symbols, newest first."""
+        try:
+            result = await self._session.execute(
+                select(TradingSignal)
+                .order_by(TradingSignal.created_at.desc())
+                .limit(limit)
+            )
+            return [_row_to_dict(row) for row in result.scalars().all()]
+        except Exception as e:
+            self._handle_db_error(e, "get_recent_all")
