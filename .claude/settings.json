@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(*)",
+      "Bash(rm -f logs/neural_oracle.log logs/neural_oracle_errors.log logs/api_access.log logs/comprehensive_test.log logs/complete_test_run.log logs/comprehensive_test_report.json logs/final_test_report.json server.log)",
+      "Bash(rm -f cleanup_redundant_files.py)",
+      "Bash(mkdir -p backend)",
+      "Bash(mv agents:*)",
+      "Bash(BASE=\"/Users/jalshrestha/Desktop/Projects/Option Oracle/option-trading-agent/backend\")",
+      "Bash(mkdir -p \"$BASE/src/schemas\" \"$BASE/src/repositories\" \"$BASE/src/services\" \"$BASE/src/api/middleware\")",
+      "Bash(touch \"$BASE/src/schemas/__init__.py\" \"$BASE/src/repositories/__init__.py\" \"$BASE/src/services/__init__.py\" \"$BASE/src/api/middleware/__init__.py\")",
+      "Bash(python -c \"from src.api.main import app; print\\(''App imported successfully''\\)\")",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(docker --version)",
+      "Bash(docker compose:*)",
+      "Bash(alembic init:*)",
+      "Bash(pg_isready -h localhost -p 5432 -U oracle)",
+      "Bash(docker exec:*)",
+      "Bash(PYTHONPATH=. alembic revision --autogenerate -m \"initial_schema\")",
+      "Bash(docker port:*)",
+      "Bash(PYTHONPATH=. alembic upgrade head)",
+      "Bash(PYTHONPATH=. python -c \"from src.api.main import app; print\\(''App import OK''\\)\")",
+      "Bash(conda run:*)",
+      "Bash(grep -n \"super\\(\\).__init__\" \"/Users/jalshrestha/Desktop/Projects/Option Oracle/option-trading-agent/backend/agents/\"*.py)",
+      "Bash(for f:*)",
+      "Bash(do head:*)",
+      "Bash(PYTHONPATH=. python -c \":*)",
+      "Bash(LLM_PROVIDER=openai OPENAI_API_KEY=sk-test123 PYTHONPATH=. python -c \":*)",
+      "Bash(LLM_PROVIDER=gemini GEMINI_API_KEY=AIza_test123 PYTHONPATH=. python -c \":*)",
+      "Bash(python3 -c \":*)",
+      "Bash(grep -rn \"from stock_indicators\\\\|import stock_indicators\" '/Users/jalshrestha/Desktop/Projects/Option Oracle/option-trading-agent/backend/' --include=*.py)",
+      "Bash(curl -s http://localhost:8080/health)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s http://localhost:8080/api/v1/system/llm-provider)"
+    ]
+  }
+}

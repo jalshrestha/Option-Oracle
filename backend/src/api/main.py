@@ -5,7 +5,7 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 from typing import Dict, Any
-from fastapi import FastAPI, Request, Response, HTTPException, Depends
+from fastapi import FastAPI, Request, Response, HTTPException, Depends, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -14,9 +14,9 @@ import uvicorn
 from config.settings import settings
 from config.logging import setup_logging, log_api_access, get_api_logger
 from config.database import health_check as db_health_check, engine, create_tables, AsyncSessionLocal
-from src.api.dependencies import get_current_session
+from src.api.dependencies import get_current_session, get_rate_limiter
 from src.api.middleware.request_id import RequestIDMiddleware
-from src.api.routes import analysis, trading, education, portfolio, system
+from src.api.routes import analysis, trading, education, portfolio, system, auth as auth_routes
 from src.api.chat_router import router as chat_router
 from src.api.intelligent_orchestrator import IntelligentOrchestrator
 
@@ -71,8 +71,8 @@ async def lifespan(app: FastAPI):
 
 def _register_middleware(app: FastAPI) -> None:
     """Register all middleware in reverse call-stack order (last = outermost)."""
-    # TrustedHost: only in production; "0.0.0.0" is not a valid hostname
-    if settings.env == "production":
+    # TrustedHost: production + staging; "0.0.0.0" is not a valid hostname
+    if settings.env in ("production", "staging"):
         allowed = getattr(settings, "allowed_hosts", ["localhost", "127.0.0.1"])
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed)
 
@@ -81,11 +81,22 @@ def _register_middleware(app: FastAPI) -> None:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["*"],
+        allow_headers=["Content-Type", "X-Session-Token", "X-Request-ID", "Accept", "Authorization"],
     )
 
     # RequestIDMiddleware runs outermost — every handler has request.state.request_id
     app.add_middleware(RequestIDMiddleware)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        if settings.env == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     @app.middleware("http")
     async def logging_middleware(request: Request, call_next):
@@ -135,6 +146,7 @@ def _register_error_handlers(app: FastAPI) -> None:
 
 def _register_routers(app: FastAPI) -> None:
     """Mount all API routers and register core endpoints."""
+    app.include_router(auth_routes.router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["Analysis"])
     app.include_router(trading.router, prefix="/api/v1/trading", tags=["Trading"])
     app.include_router(education.router, prefix="/api/v1/education", tags=["Education"])
@@ -172,7 +184,11 @@ def _register_routers(app: FastAPI) -> None:
         }
 
     @app.post("/api/v1/session/create")
-    async def create_session(request: Request, risk_profile: str = "moderate") -> Dict[str, Any]:
+    async def create_session(
+        request: Request,
+        risk_profile: str = "moderate",
+        _rate: None = Depends(get_rate_limiter(5)),
+    ) -> Dict[str, Any]:
         import uuid
         from datetime import datetime, timedelta, timezone
         from src.repositories.sessions import SessionRepository
@@ -248,7 +264,11 @@ class ChatResponse(BaseModel):
     agents_triggered: Optional[List[str]] = None
 
 @app.post("/api/v1/chat/message", response_model=ChatResponse)
-async def send_chat_message(message_data: ChatMessage):
+async def send_chat_message(
+    message_data: ChatMessage,
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(30)),
+):
     """Chat endpoint that connects to AI agents"""
     try:
         logger.info(f"🧠 Processing chat message: {message_data.message}")
@@ -323,7 +343,10 @@ async def send_chat_message(message_data: ChatMessage):
 
 # Hot stocks endpoint for frontend
 @app.get("/api/v1/stocks/hot-stocks")
-async def get_hot_stocks():
+async def get_hot_stocks(
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(20)),
+):
     """Get hot stocks with real StockTwits trending data and AI analysis"""
     try:
         logger.info("🔥 Getting REAL trending stocks from StockTwits...")
@@ -466,7 +489,11 @@ async def get_hot_stocks():
 
 # AI Agents endpoint for frontend
 @app.get("/api/v1/agents/{symbol}")
-async def get_agent_analysis(symbol: str):
+async def get_agent_analysis(
+    symbol: str = Path(..., min_length=1, max_length=5, pattern=r"^[A-Za-z]+$"),
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(30)),
+):
     """Get AI agent analysis for a specific symbol"""
     try:
         logger.info(f"🤖 Getting agent analysis for {symbol}")
@@ -502,7 +529,11 @@ async def get_agent_analysis(symbol: str):
 
 # Trading signals endpoint for frontend
 @app.get("/api/v1/technical/{symbol}")
-async def get_technical_indicators(symbol: str):
+async def get_technical_indicators(
+    symbol: str = Path(..., min_length=1, max_length=5, pattern=r"^[A-Za-z]+$"),
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(30)),
+):
     """Get technical indicators for a symbol"""
     try:
         logger.info(f"📊 Getting technical indicators for {symbol}")
@@ -528,11 +559,15 @@ async def get_technical_indicators(symbol: str):
         }
         
     except Exception as e:
-        logger.error(f"❌ Technical indicators error for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=f"Technical indicators failed: {str(e)}")
+        logger.error(f"❌ Technical indicators error for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.get("/api/v1/signals/{symbol}")
-async def get_trading_signals(symbol: str):
+async def get_trading_signals(
+    symbol: str = Path(..., min_length=1, max_length=5, pattern=r"^[A-Za-z]+$"),
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(30)),
+):
     """Get trading signals for a specific symbol"""
     try:
         logger.info(f"🔥 Getting real trading signals for {symbol}...")
@@ -575,7 +610,12 @@ async def get_trading_signals(symbol: str):
         }
 
 @app.get("/api/v1/options/{symbol}")
-async def get_options_chain(symbol: str, expiry: str = None):
+async def get_options_chain(
+    symbol: str = Path(..., min_length=1, max_length=5, pattern=r"^[A-Za-z]+$"),
+    expiry: str = None,
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(30)),
+):
     """Get options chain data for a symbol"""
     try:
         from src.data.alpaca_client import AlpacaMarketDataClient
@@ -616,13 +656,17 @@ async def get_options_chain(symbol: str, expiry: str = None):
             "total_put_volume": data.get("total_put_volume", 0),
         }
     except Exception as e:
-        logger.error(f"Options chain error for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=f"Options data failed: {str(e)}")
+        logger.error(f"Options chain error for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # Trading command endpoint for chat
 @app.post("/api/v1/chat/trade")
-async def process_trading_command(message_data: ChatMessage):
+async def process_trading_command(
+    message_data: ChatMessage,
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(10)),
+):
     """Process trading commands from chat interface"""
     try:
         logger.info(f"🎯 Processing trading command: {message_data.message}")
@@ -697,7 +741,11 @@ async def process_trading_command(message_data: ChatMessage):
 
 
 @app.post("/api/v1/options/execute")
-async def execute_options_purchase(request: Dict[str, Any]):
+async def execute_options_purchase(
+    request: Dict[str, Any],
+    session: Dict = Depends(get_current_session),
+    _rate: None = Depends(get_rate_limiter(10)),
+):
     """Execute options purchase after user confirmation"""
     try:
         logger.info(f"🚀 Executing options purchase: {request.get('type', 'unknown')}")
@@ -742,11 +790,11 @@ async def execute_options_purchase(request: Dict[str, Any]):
         return result
         
     except Exception as e:
-        logger.error(f"❌ Options execution error: {e}")
+        logger.error(f"❌ Options execution error: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
-                "error": f"Execution failed: {str(e)}",
+                "error": "An internal error occurred. Please try again.",
                 "status": "failed"
             }
         )

@@ -31,7 +31,7 @@ engine: AsyncEngine = create_async_engine(
     pool_timeout=settings.db_connect_timeout,
     pool_recycle=3600,
     pool_pre_ping=True,          # detect stale connections
-    echo=settings.app_debug,
+    echo=(settings.app_debug and settings.env == "development"),
 )
 
 # ---------------------------------------------------------------------------

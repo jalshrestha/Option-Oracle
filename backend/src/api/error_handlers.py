@@ -22,6 +22,7 @@ from fastapi.exceptions import HTTPException
 
 from src.exceptions import OracleError
 from config.logging import get_api_logger
+from config.settings import settings
 
 logger = get_api_logger()
 
@@ -84,11 +85,17 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     Logs the full traceback server-side; returns a generic 500 to the client.
     """
     request_id = _request_id(request)
-    logger.error(
-        f"[{request_id}] Unhandled {type(exc).__name__} on "
-        f"{request.method} {request.url.path}:\n"
-        + traceback.format_exc()
-    )
+    if settings.env != "production":
+        logger.error(
+            f"[{request_id}] Unhandled {type(exc).__name__} on "
+            f"{request.method} {request.url.path}:\n"
+            + traceback.format_exc()
+        )
+    else:
+        logger.error(
+            f"[{request_id}] Unhandled {type(exc).__name__} on "
+            f"{request.method} {request.url.path}: {exc}"
+        )
     return JSONResponse(
         status_code=500,
         content=_error_body(

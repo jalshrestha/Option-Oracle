@@ -8,6 +8,7 @@ from src.models.position import Position
 from src.models.session import BrowserSession
 from src.models.signal import TradingSignal
 from src.models.stock import Stock
+from src.models.user import User
 
 __all__ = [
     "Base",
@@ -23,4 +24,5 @@ __all__ = [
     "SystemConfig",
     "MarketDataCache",
     "AiAnalysisCache",
+    "User",
 ]

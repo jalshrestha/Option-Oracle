@@ -219,20 +219,23 @@ async def get_system_config(
                 "found": value is not None
             }
         
-        # Get all public configuration
+        # Get safe public configuration
         public_config = {
             "analysis_timeout_seconds": settings.analysis_timeout_seconds,
             "max_concurrent_analysis": settings.max_concurrent_analysis,
             "default_risk_profile": settings.default_risk_profile,
             "paper_trading_balance": settings.paper_trading_balance,
-            "rate_limits": {
-                "per_minute": settings.rate_limit_per_minute,
-                "burst": settings.rate_limit_burst
-            },
-            "cors_origins": settings.cors_origins,
-            "environment": settings.env
         }
-        
+
+        # Only expose internal infra details in development
+        if settings.env == "development":
+            public_config["rate_limits"] = {
+                "per_minute": settings.rate_limit_per_minute,
+                "burst": settings.rate_limit_burst,
+            }
+            public_config["cors_origins"] = settings.cors_origins
+            public_config["environment"] = settings.env
+
         return public_config
         
     except Exception as e:

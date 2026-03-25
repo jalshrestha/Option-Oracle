@@ -28,7 +28,13 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Database
     # ------------------------------------------------------------------
-    database_url: str = "postgresql+asyncpg://oracle:oracle_dev@postgres:5432/option_oracle"
+    database_url: str  # required — set DATABASE_URL env var
+
+    # ------------------------------------------------------------------
+    # Auth / JWT
+    # ------------------------------------------------------------------
+    jwt_secret_key: str  # required — set JWT_SECRET_KEY env var (min 32 chars)
+    allowed_hosts: List[str] = ["localhost", "127.0.0.1", "0.0.0.0"]
 
     # ------------------------------------------------------------------
     # LLM Provider Selection
@@ -90,6 +96,13 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Validators
     # ------------------------------------------------------------------
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def validate_jwt_key(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters")
+        return v
 
     @field_validator("database_url")
     @classmethod
