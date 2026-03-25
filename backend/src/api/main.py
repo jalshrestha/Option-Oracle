@@ -542,27 +542,48 @@ async def get_technical_indicators(
     """Get technical indicators for a symbol"""
     try:
         logger.info(f"📊 Getting technical indicators for {symbol}")
-        
-        orchestrator = get_orchestrator()
 
-        # Get technical analysis
-        user_context = {'selectedStock': symbol}
-        result = await orchestrator.process_user_query(
-            f"technical analysis indicators for {symbol}",
-            user_context
+        from src.data.alpaca_client import AlpacaMarketDataClient
+        from datetime import datetime as _dt
+        client = AlpacaMarketDataClient()
+
+        # Fetch quote and indicators concurrently (no OpenAI required)
+        quote, indicators = await asyncio.gather(
+            client.get_current_quote(symbol),
+            client.get_technical_indicators(symbol),
         )
-        
-        # Extract technical data
-        technical_data = result.get('frontend_data', {}).get('technical_indicators', {})
-        chart_data = result.get('frontend_data', {}).get('chart_data', {})
-        
+
+        # Build candles list from historical data
+        candles = []
+        try:
+            df = await client.get_historical_data(symbol, period="3mo", interval="1d")
+            if not df.empty:
+                for idx, row in df.tail(90).iterrows():
+                    candles.append({
+                        "date": str(idx.date()) if hasattr(idx, "date") else str(idx),
+                        "open": float(row.get("Open", row.get("open", 0))),
+                        "high": float(row.get("High", row.get("high", 0))),
+                        "low": float(row.get("Low", row.get("low", 0))),
+                        "close": float(row.get("Close", row.get("close", 0))),
+                        "volume": int(row.get("Volume", row.get("volume", 0))),
+                    })
+        except Exception as candle_err:
+            logger.warning(f"Could not fetch candles for {symbol}: {candle_err}")
+
         return {
             "symbol": symbol,
-            "indicators": technical_data,
-            "chart_data": chart_data,
-            "timestamp": time.time()
+            "price": quote.get("price", indicators.get("current_price", 0)),
+            "change": quote.get("change", 0),
+            "change_percent": quote.get("change_percent", indicators.get("change_percent", 0)),
+            "bid": quote.get("bid", 0),
+            "ask": quote.get("ask", 0),
+            "volume": quote.get("volume", indicators.get("volume", 0)),
+            "avg_volume": int(indicators.get("avg_volume", indicators.get("volume", 1000000))),
+            "indicators": indicators,
+            "candles": candles,
+            "last_updated": quote.get("timestamp", _dt.utcnow().isoformat()),
         }
-        
+
     except Exception as e:
         logger.error(f"❌ Technical indicators error for {symbol}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
