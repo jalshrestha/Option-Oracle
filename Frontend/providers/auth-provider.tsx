@@ -57,6 +57,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  loginAsGuest: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -65,6 +66,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   register: async () => {},
   logout: async () => {},
+  loginAsGuest: async () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -101,8 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // No valid session — auto-register or re-login as anonymous
-      await initAnonUser()
+      // No valid session — mark ready with no user; AppShell will redirect to /landing
+      setIsReady(true)
     }
 
     init()
@@ -153,6 +155,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsReady(true)
   }
 
+  async function handleLoginAsGuest() {
+    await initAnonUser()
+  }
+
   async function handleLogin(email: string, password: string) {
     await login(email, password)
     const profile = await getMe()
@@ -171,9 +177,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     await apiLogout()
+    clearTokens()
     setUser(null)
-    // Re-init as anonymous
-    await initAnonUser()
+    // AppShell will redirect to /landing since user is now null
   }
 
   return (
@@ -184,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login: handleLogin,
         register: handleRegister,
         logout: handleLogout,
+        loginAsGuest: handleLoginAsGuest,
       }}
     >
       {children}

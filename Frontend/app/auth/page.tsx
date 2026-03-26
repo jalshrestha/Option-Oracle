@@ -23,7 +23,7 @@ const GoogleIcon = () => (
 )
 
 export default function AuthPage() {
-  const { login, register, isReady } = useAuth()
+  const { login, register, loginAsGuest, isReady } = useAuth()
   const router = useRouter()
 
   const [tab, setTab] = useState<'login' | 'register'>('login')
@@ -137,7 +137,16 @@ export default function AuthPage() {
   }
 
   async function handleGuest() {
-    router.push('/')
+    setLoading(true)
+    setError(null)
+    try {
+      await loginAsGuest()
+      router.push('/')
+    } catch {
+      setError('Unable to start guest session. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

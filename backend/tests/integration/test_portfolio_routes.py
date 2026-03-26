@@ -3,10 +3,10 @@ Integration tests for /api/v1/portfolio/* routes.
 PortfolioService is overridden via FastAPI dependency_overrides — no live DB needed.
 """
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport
 
-from src.api.dependencies import get_current_session, get_portfolio_service, get_rate_limiter
+from src.api.dependencies import get_current_session, get_db, get_portfolio_service, get_rate_limiter
 from src.schemas.portfolio import GreeksSchema, PortfolioSummaryResponse, RiskMetricsResponse
 
 
@@ -49,9 +49,19 @@ def portfolio_app():
         var_95=1040.0, max_loss=2000.0
     )
 
+    # Mock DB session so /performance doesn't try to connect to a real database
+    mock_db = AsyncMock()
+    execute_result = MagicMock()
+    execute_result.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = execute_result
+
+    async def mock_get_db():
+        yield mock_db
+
     app.dependency_overrides[get_portfolio_service] = lambda: mock_service
     app.dependency_overrides[get_current_session] = lambda: _mock_session()
     app.dependency_overrides[get_rate_limiter(max_requests=60)] = lambda: None
+    app.dependency_overrides[get_db] = mock_get_db
 
     yield app, mock_service
 
