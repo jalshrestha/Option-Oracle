@@ -140,6 +140,11 @@
 
 ## WHAT'S ACTUALLY LEFT (Prioritized)
 
+### ✅ Completed (2026-03-26)
+- ~~Full frontend/backend audit — confirmed most pages already wired to real APIs~~
+- ~~Enable TypeScript strict build (`ignoreBuildErrors: false` in `next.config.mjs`)~~
+- ~~PLAN.md created with accurate project status~~
+
 ### 🔴 Next Up
 
 1. **Add SPY/QQQ/IWM to hot-stocks fallback** (backend `main.py`) — `MarketPulseCard` shows empty without them
