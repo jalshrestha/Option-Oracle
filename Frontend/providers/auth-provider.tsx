@@ -81,29 +81,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Valid token — load user profile
         try {
           const profile = await getMe()
+          // Guest sessions (anon emails) must not auto-resume across page loads.
+          // Clear them so the user sees the landing page instead of the dashboard.
+          if (profile.email.endsWith('@anon.example.com')) {
+            clearTokens()
+            localStorage.removeItem(ANON_CREDS_KEY)
+            setIsReady(true)
+            return
+          }
           setUser(profile)
           setIsReady(true)
           return
         } catch {
-          // Token invalid, fall through to re-auth
+          // Token invalid — fall through
           clearTokens()
         }
       }
 
-      // Try refresh if we have a refresh token
-      const refreshToken = getRefreshToken()
-      if (refreshToken && !isTokenExpired(refreshToken)) {
-        try {
-          const profile = await getMe()
-          setUser(profile)
-          setIsReady(true)
-          return
-        } catch {
-          clearTokens()
-        }
-      }
-
-      // No valid session — mark ready with no user; AppShell will redirect to /landing
+      // No valid real session — mark ready with no user; AppShell redirects to /landing
       setIsReady(true)
     }
 
