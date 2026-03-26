@@ -36,7 +36,7 @@ function generateAnonCreds(): AnonCreds {
     .join('')
   return {
     username: `user_${hex}`,
-    email: `user_${hex}@oracle.local`,
+    email: `user_${hex}@anon.example.com`,
     password: `Anon_${pwHex}!`,
   }
 }
