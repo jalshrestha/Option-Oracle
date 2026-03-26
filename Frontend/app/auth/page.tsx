@@ -4,12 +4,23 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Eye, EyeOff, Sparkles, ArrowRight, User, Mail, Lock, AlertCircle,
+  Eye, EyeOff, Sparkles, ArrowRight, User, Mail, Lock, AlertCircle, Github,
 } from 'lucide-react'
 import { useAuth } from '@/providers/auth-provider'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+// ── Google icon (SVG, lucide doesn't have it) ─────────────────────────────────
+const GoogleIcon = () => (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+  </svg>
+)
 
 export default function AuthPage() {
   const { login, register, isReady } = useAuth()
@@ -22,8 +33,9 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [oauthNote, setOauthNote] = useState<string | null>(null)
 
-  // ── Rising particle canvas ────────────────────────────────────────────────
+  // ── Rising particles (exact from design) ─────────────────────────────────
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   useEffect(() => {
     const canvas = canvasRef.current
@@ -43,8 +55,8 @@ export default function AuthPage() {
     const make = (): P => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      v: Math.random() * 0.3 + 0.05,
-      o: Math.random() * 0.3 + 0.1,
+      v: Math.random() * 0.25 + 0.05,
+      o: Math.random() * 0.35 + 0.15,
     })
 
     const init = () => {
@@ -60,11 +72,11 @@ export default function AuthPage() {
         if (p.y < 0) {
           p.x = Math.random() * canvas.width
           p.y = canvas.height + Math.random() * 40
-          p.v = Math.random() * 0.3 + 0.05
-          p.o = Math.random() * 0.3 + 0.1
+          p.v = Math.random() * 0.25 + 0.05
+          p.o = Math.random() * 0.35 + 0.15
         }
-        ctx.fillStyle = `rgba(124,111,247,${p.o})`
-        ctx.fillRect(p.x, p.y, 0.8, 2.4)
+        ctx.fillStyle = `rgba(250,250,250,${p.o})`
+        ctx.fillRect(p.x, p.y, 0.7, 2.2)
       })
       raf = requestAnimationFrame(draw)
     }
@@ -83,6 +95,7 @@ export default function AuthPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setOauthNote(null)
     setLoading(true)
     try {
       if (tab === 'login') {
@@ -117,35 +130,49 @@ export default function AuthPage() {
     }
   }
 
+  function handleOAuth(provider: 'github' | 'google') {
+    setError(null)
+    setOauthNote(`${provider === 'github' ? 'GitHub' : 'Google'} login coming soon.`)
+    setTimeout(() => setOauthNote(null), 3000)
+  }
+
   async function handleGuest() {
     router.push('/')
   }
 
   return (
-    <section className="fixed inset-0 bg-[#0a0a0f] text-white overflow-hidden">
-      {/* ── Inline CSS animations ── */}
+    <section className="fixed inset-0 bg-zinc-950 text-zinc-50">
+      {/* ── CSS animations (exact from design) ── */}
       <style>{`
-        .accent-wrap{position:absolute;inset:0;pointer-events:none}
-        .hline,.vline{position:absolute;background:#7c6ff7;will-change:transform,opacity}
-        .hline{left:0;right:0;height:1px;transform:scaleX(0);transform-origin:50%;animation:drawX .9s cubic-bezier(.22,.61,.36,1) forwards}
-        .vline{top:0;bottom:0;width:1px;transform:scaleY(0);transform-origin:50% 0;animation:drawY 1s cubic-bezier(.22,.61,.36,1) forwards}
-        .hline:nth-child(1){top:18%;animation-delay:.1s}
+        .accent-lines{position:absolute;inset:0;pointer-events:none;opacity:.7}
+        .hline,.vline{position:absolute;background:#27272a;will-change:transform,opacity}
+        .hline{left:0;right:0;height:1px;transform:scaleX(0);transform-origin:50% 50%;animation:drawX .8s cubic-bezier(.22,.61,.36,1) forwards}
+        .vline{top:0;bottom:0;width:1px;transform:scaleY(0);transform-origin:50% 0%;animation:drawY .9s cubic-bezier(.22,.61,.36,1) forwards}
+        .hline:nth-child(1){top:18%;animation-delay:.12s}
         .hline:nth-child(2){top:50%;animation-delay:.22s}
-        .hline:nth-child(3){top:82%;animation-delay:.34s}
-        .vline:nth-child(4){left:22%;animation-delay:.44s}
-        .vline:nth-child(5){left:50%;animation-delay:.56s}
-        .vline:nth-child(6){left:78%;animation-delay:.68s}
-        @keyframes drawX{0%{transform:scaleX(0);opacity:0}60%{opacity:.14}100%{transform:scaleX(1);opacity:.08}}
-        @keyframes drawY{0%{transform:scaleY(0);opacity:0}60%{opacity:.14}100%{transform:scaleY(1);opacity:.08}}
-        .card-animate{opacity:0;transform:translateY(20px);animation:fadeUp .8s cubic-bezier(.22,.61,.36,1) .3s forwards}
+        .hline:nth-child(3){top:82%;animation-delay:.32s}
+        .vline:nth-child(4){left:22%;animation-delay:.42s}
+        .vline:nth-child(5){left:50%;animation-delay:.54s}
+        .vline:nth-child(6){left:78%;animation-delay:.66s}
+        .hline::after,.vline::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(250,250,250,.24),transparent);opacity:0;animation:shimmer .9s ease-out forwards}
+        .hline:nth-child(1)::after{animation-delay:.12s}
+        .hline:nth-child(2)::after{animation-delay:.22s}
+        .hline:nth-child(3)::after{animation-delay:.32s}
+        .vline:nth-child(4)::after{animation-delay:.42s}
+        .vline:nth-child(5)::after{animation-delay:.54s}
+        .vline:nth-child(6)::after{animation-delay:.66s}
+        @keyframes drawX{0%{transform:scaleX(0);opacity:0}60%{opacity:.95}100%{transform:scaleX(1);opacity:.7}}
+        @keyframes drawY{0%{transform:scaleY(0);opacity:0}60%{opacity:.95}100%{transform:scaleY(1);opacity:.7}}
+        @keyframes shimmer{0%{opacity:0}35%{opacity:.25}100%{opacity:0}}
+        .card-animate{opacity:0;transform:translateY(20px);animation:fadeUp .8s cubic-bezier(.22,.61,.36,1) .4s forwards}
         @keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
       `}</style>
 
-      {/* ── Ambient vignette ── */}
-      <div className="absolute inset-0 pointer-events-none [background:radial-gradient(70%_50%_at_50%_30%,rgba(124,111,247,0.07),transparent_65%)]" />
+      {/* ── Vignette (exact from design) ── */}
+      <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(255,255,255,0.06),transparent_60%)]" />
 
-      {/* ── Animated accent grid ── */}
-      <div className="accent-wrap">
+      {/* ── Animated accent lines ── */}
+      <div className="accent-lines">
         <div className="hline" />
         <div className="hline" />
         <div className="hline" />
@@ -154,17 +181,17 @@ export default function AuthPage() {
         <div className="vline" />
       </div>
 
-      {/* ── Particle canvas ── */}
+      {/* ── Particles ── */}
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 w-full h-full opacity-60 mix-blend-screen pointer-events-none"
+        className="absolute inset-0 w-full h-full opacity-50 mix-blend-screen pointer-events-none"
       />
 
-      {/* ── Top header bar ── */}
-      <header className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-[#7c6ff7]/10">
+      {/* ── Header ── */}
+      <header className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-zinc-800/80">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#7c6ff7] to-[#0ea5e9]">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#7c6ff7] to-[#0ea5e9]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-white">
               <circle cx="12" cy="12" r="3" fill="currentColor" />
               <circle cx="12" cy="4" r="2" fill="currentColor" opacity="0.6" />
               <circle cx="12" cy="20" r="2" fill="currentColor" opacity="0.6" />
@@ -176,62 +203,79 @@ export default function AuthPage() {
               <line x1="15" y1="12" x2="18" y2="12" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
             </svg>
           </div>
-          <span className="text-sm font-semibold tracking-tight">
-            Option <span className="text-[#7c6ff7]">Oracle</span>
-          </span>
+          <span className="text-xs tracking-[0.14em] uppercase text-zinc-400">Option Oracle</span>
         </div>
-        <button className="h-8 rounded-lg border border-[#7c6ff7]/20 bg-transparent px-4 text-xs text-white/40 transition hover:border-[#7c6ff7]/40 hover:text-white/70">
-          Contact
-        </button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 rounded-lg border-zinc-800 bg-zinc-900 text-zinc-50 hover:bg-zinc-800"
+        >
+          <span className="mr-2 text-sm">Contact</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
       </header>
 
       {/* ── Centered card ── */}
       <div className="h-full w-full grid place-items-center px-4">
         <div className="card-animate w-full max-w-sm">
-          <div className="overflow-hidden rounded-2xl border border-[#7c6ff7]/15 bg-[#111118]/70 shadow-2xl shadow-purple-950/40 backdrop-blur-xl supports-[backdrop-filter]:bg-[#111118]/60">
 
-            {/* Tab strip */}
-            <div className="flex border-b border-white/5">
-              {(['login', 'register'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => { setTab(t); setError(null) }}
-                  className={cn(
-                    'relative flex-1 py-4 text-sm font-medium transition-colors',
-                    tab === t ? 'text-white' : 'text-white/35 hover:text-white/65'
-                  )}
+          {/* Tab toggle above card */}
+          <div className="mb-4 flex rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
+            {(['login', 'register'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => { setTab(t); setError(null); setOauthNote(null) }}
+                className={cn(
+                  'relative flex-1 rounded-lg py-2 text-sm font-medium transition-all duration-200',
+                  tab === t
+                    ? 'bg-zinc-800 text-zinc-50 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                )}
+              >
+                {t === 'login' ? 'Sign In' : 'Create Account'}
+              </button>
+            ))}
+          </div>
+
+          {/* Main card */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur supports-[backdrop-filter]:bg-zinc-900/60 overflow-hidden">
+            <div className="px-6 pt-6 pb-2">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={tab}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
                 >
-                  {t === 'login' ? 'Sign In' : 'Create Account'}
-                  {tab === t && (
-                    <motion.div
-                      layoutId="auth-tab-indicator"
-                      className="absolute bottom-0 left-0 right-0 h-0.5"
-                      style={{ background: 'linear-gradient(135deg, #7c6ff7 0%, #4f46e5 50%, #0ea5e9 100%)' }}
-                    />
-                  )}
-                </button>
-              ))}
+                  <h2 className="text-2xl font-semibold text-zinc-50">
+                    {tab === 'login' ? 'Welcome back' : 'Create account'}
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    {tab === 'login'
+                      ? 'Sign in to your Option Oracle account'
+                      : 'Start trading with AI precision today'}
+                  </p>
+                </motion.div>
+              </AnimatePresence>
             </div>
 
-            {/* Form */}
-            <div className="p-6">
+            <div className="px-6 pb-6 pt-4 grid gap-5">
               <AnimatePresence mode="wait">
                 <motion.form
                   key={tab}
-                  initial={{ opacity: 0, x: tab === 'login' ? -12 : 12 }}
+                  initial={{ opacity: 0, x: tab === 'login' ? -10 : 10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: tab === 'login' ? 12 : -12 }}
-                  transition={{ duration: 0.18 }}
+                  exit={{ opacity: 0, x: tab === 'login' ? 10 : -10 }}
+                  transition={{ duration: 0.16 }}
                   onSubmit={handleSubmit}
-                  className="space-y-4"
+                  className="grid gap-4"
                 >
                   {/* Email */}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="email" className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
-                      Email
-                    </Label>
+                  <div className="grid gap-2">
+                    <Label htmlFor="email" className="text-zinc-300">Email</Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/25" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                       <Input
                         id="email"
                         type="email"
@@ -240,7 +284,7 @@ export default function AuthPage() {
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="h-10 pl-9 bg-white/5 border-white/8 text-white placeholder:text-white/20 focus-visible:border-[#7c6ff7]/60 focus-visible:ring-[#7c6ff7]/15 rounded-xl"
+                        className="pl-10 bg-zinc-950 border-zinc-800 text-zinc-50 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-700/30"
                       />
                     </div>
                   </div>
@@ -253,13 +297,11 @@ export default function AuthPage() {
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="space-y-1.5 overflow-hidden"
+                        className="grid gap-2 overflow-hidden"
                       >
-                        <Label htmlFor="username" className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
-                          Username
-                        </Label>
+                        <Label htmlFor="username" className="text-zinc-300">Username</Label>
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/25" />
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                           <Input
                             id="username"
                             type="text"
@@ -271,24 +313,26 @@ export default function AuthPage() {
                             minLength={3}
                             maxLength={50}
                             pattern="[a-zA-Z0-9_]+"
-                            className="h-10 pl-9 bg-white/5 border-white/8 text-white placeholder:text-white/20 focus-visible:border-[#7c6ff7]/60 focus-visible:ring-[#7c6ff7]/15 rounded-xl"
+                            className="pl-10 bg-zinc-950 border-zinc-800 text-zinc-50 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-700/30"
                           />
                         </div>
-                        <p className="text-[10px] text-white/20">Letters, numbers, and underscores only</p>
+                        <p className="text-xs text-zinc-600">Letters, numbers, and underscores only</p>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
                   {/* Password */}
-                  <div className="space-y-1.5">
+                  <div className="grid gap-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="password" className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
-                        Password
-                      </Label>
-                      <span className="text-[10px] text-white/20">Min. 8 characters</span>
+                      <Label htmlFor="password" className="text-zinc-300">Password</Label>
+                      {tab === 'login' && (
+                        <a href="#" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
+                          Forgot password?
+                        </a>
+                      )}
                     </div>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/25" />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                       <Input
                         id="password"
                         type={showPassword ? 'text' : 'password'}
@@ -298,14 +342,15 @@ export default function AuthPage() {
                         placeholder="••••••••"
                         minLength={8}
                         autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
-                        className="h-10 pl-9 pr-10 bg-white/5 border-white/8 text-white placeholder:text-white/20 focus-visible:border-[#7c6ff7]/60 focus-visible:ring-[#7c6ff7]/15 rounded-xl"
+                        className="pl-10 pr-10 bg-zinc-950 border-zinc-800 text-zinc-50 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-700/30"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+                        onClick={() => setShowPassword((v) => !v)}
                       >
-                        {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                   </div>
@@ -317,64 +362,120 @@ export default function AuthPage() {
                         initial={{ opacity: 0, y: -6 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -6 }}
-                        className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/8 px-3 py-2.5"
+                        className="flex items-start gap-2 rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2.5"
                       >
-                        <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-400" />
-                        <p className="text-xs leading-relaxed text-red-400">{error}</p>
+                        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                        <p className="text-sm text-red-400">{error}</p>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
                   {/* Submit */}
-                  <button
+                  <Button
                     type="submit"
                     disabled={loading}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium text-white shadow-lg shadow-purple-900/30 transition-opacity hover:opacity-90 disabled:opacity-60"
-                    style={{ background: 'linear-gradient(135deg, #7c6ff7 0%, #4f46e5 50%, #0ea5e9 100%)' }}
+                    className="w-full h-10 rounded-lg bg-zinc-50 text-zinc-900 hover:bg-zinc-200 font-medium"
                   >
                     {loading ? (
-                      <>
+                      <span className="flex items-center gap-2">
                         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
                         {tab === 'login' ? 'Signing in…' : 'Creating account…'}
-                      </>
+                      </span>
                     ) : (
-                      <>
-                        {tab === 'login' ? 'Sign In' : 'Create Account'}
-                        <ArrowRight className="h-4 w-4" />
-                      </>
+                      tab === 'login' ? 'Continue' : 'Create Account'
                     )}
-                  </button>
+                  </Button>
                 </motion.form>
               </AnimatePresence>
 
               {/* Divider */}
-              <div className="relative my-5">
+              <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/6" />
+                  <div className="w-full border-t border-zinc-800" />
                 </div>
-                <div className="relative flex justify-center text-[10px]">
-                  <span className="bg-[#111118] px-3 uppercase tracking-widest text-white/20">or</span>
+                <div className="relative flex justify-center">
+                  <span className="bg-zinc-900/70 px-2 text-[11px] uppercase tracking-widest text-zinc-500">or</span>
                 </div>
               </div>
+
+              {/* Social login */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleOAuth('github')}
+                  className="h-10 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 hover:bg-zinc-900 hover:text-zinc-50"
+                >
+                  <Github className="h-4 w-4 mr-2" />
+                  GitHub
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleOAuth('google')}
+                  className="h-10 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 hover:bg-zinc-900 hover:text-zinc-50"
+                >
+                  <GoogleIcon />
+                  <span className="ml-2">Google</span>
+                </Button>
+              </div>
+
+              {/* OAuth coming soon note */}
+              <AnimatePresence>
+                {oauthNote && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-center text-xs text-zinc-500"
+                  >
+                    {oauthNote}
+                  </motion.p>
+                )}
+              </AnimatePresence>
 
               {/* Guest */}
               <button
                 type="button"
                 onClick={handleGuest}
                 disabled={!isReady}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/8 bg-white/3 py-2.5 text-sm text-white/35 transition-all hover:border-[#7c6ff7]/25 hover:bg-white/5 hover:text-white/65 disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-transparent py-2.5 text-sm text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:opacity-40"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Continue as Guest
               </button>
             </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-center px-6 pb-5 text-sm text-zinc-400">
+              {tab === 'login' ? (
+                <>
+                  Don&apos;t have an account?{' '}
+                  <button
+                    onClick={() => { setTab('register'); setError(null) }}
+                    className="ml-1 text-zinc-200 hover:underline"
+                  >
+                    Create one
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{' '}
+                  <button
+                    onClick={() => { setTab('login'); setError(null) }}
+                    className="ml-1 text-zinc-200 hover:underline"
+                  >
+                    Sign in
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Footer */}
-          <p className="mt-5 text-center text-[10px] uppercase tracking-widest text-white/15">
+          <p className="mt-4 text-center text-[10px] uppercase tracking-widest text-zinc-600">
             AI-powered analysis · Paper trading only · Not financial advice
           </p>
         </div>
