@@ -482,14 +482,12 @@ async def get_hot_stocks(
         }
         
     except Exception as e:
-        logger.error(f"❌ Hot stocks API error: {e}")
-        # Return empty array instead of mock data
+        logger.error(f"❌ Hot stocks API error: {e}", exc_info=True)
         return {
             "stocks": [],
             "timestamp": time.time(),
             "total_count": 0,
             "data_source": "error",
-            "error": str(e)
         }
 
 # AI Agents endpoint for frontend
@@ -523,13 +521,12 @@ async def get_agent_analysis(
         }
         
     except Exception as e:
-        logger.error(f"❌ Agent analysis error for {symbol}: {e}")
+        logger.error(f"❌ Agent analysis error for {symbol}: {e}", exc_info=True)
         return {
             "symbol": symbol,
             "agents": [],
             "overall_signal": "HOLD",
             "timestamp": time.time(),
-            "error": str(e)
         }
 
 # Trading signals endpoint for frontend
@@ -625,14 +622,13 @@ async def get_trading_signals(
         }
         
     except Exception as e:
-        logger.error(f"❌ Trading signals API error for {symbol}: {e}")
+        logger.error(f"❌ Trading signals API error for {symbol}: {e}", exc_info=True)
         return {
             "signals": [],
             "symbol": symbol,
             "timestamp": time.time(),
             "total_signals": 0,
             "data_source": "error",
-            "error": str(e)
         }
 
 @app.get("/api/v1/options/{symbol}")
@@ -749,9 +745,8 @@ async def process_trading_command(
         return trading_response
         
     except Exception as e:
-        logger.error(f"❌ Trading command error: {e}")
+        logger.error(f"❌ Trading command error: {e}", exc_info=True)
         return {
-            'error': str(e),
             'symbol': message_data.selectedStock,
             'trading_analysis': {
                 'recommendations': [],
@@ -759,7 +754,7 @@ async def process_trading_command(
                 'risk_assessment': {'risk_level': 'unknown'},
                 'confidence': 0.0
             },
-            'ai_response': f"I encountered an error processing your trading request: {str(e)}",
+            'ai_response': "I encountered an error processing your trading request. Please try again.",
             'actions': {},
             'suggestions': ["Try again", "Check symbol", "Review risk profile"],
             'timestamp': time.time()

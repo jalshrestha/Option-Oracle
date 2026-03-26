@@ -57,6 +57,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  loginAsGuest: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -65,6 +66,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   register: async () => {},
   logout: async () => {},
+  loginAsGuest: async () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -79,30 +81,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Valid token — load user profile
         try {
           const profile = await getMe()
+          // Guest sessions (anon emails) must not auto-resume across page loads.
+          // Clear them so the user sees the landing page instead of the dashboard.
+          if (profile.email.endsWith('@anon.example.com')) {
+            clearTokens()
+            localStorage.removeItem(ANON_CREDS_KEY)
+            setIsReady(true)
+            return
+          }
           setUser(profile)
           setIsReady(true)
           return
         } catch {
-          // Token invalid, fall through to re-auth
+          // Token invalid — fall through
           clearTokens()
         }
       }
 
-      // Try refresh if we have a refresh token
-      const refreshToken = getRefreshToken()
-      if (refreshToken && !isTokenExpired(refreshToken)) {
-        try {
-          const profile = await getMe()
-          setUser(profile)
-          setIsReady(true)
-          return
-        } catch {
-          clearTokens()
-        }
-      }
-
-      // No valid session — auto-register or re-login as anonymous
-      await initAnonUser()
+      // No valid real session — mark ready with no user; AppShell redirects to /landing
+      setIsReady(true)
     }
 
     init()
@@ -153,6 +150,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsReady(true)
   }
 
+  async function handleLoginAsGuest() {
+    await initAnonUser()
+  }
+
   async function handleLogin(email: string, password: string) {
     await login(email, password)
     const profile = await getMe()
@@ -171,9 +172,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     await apiLogout()
+    clearTokens()
     setUser(null)
-    // Re-init as anonymous
-    await initAnonUser()
+    // AppShell will redirect to /landing since user is now null
   }
 
   return (
@@ -184,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login: handleLogin,
         register: handleRegister,
         logout: handleLogout,
+        loginAsGuest: handleLoginAsGuest,
       }}
     >
       {children}

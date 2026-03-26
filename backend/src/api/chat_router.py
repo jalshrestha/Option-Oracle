@@ -160,8 +160,8 @@ async def route_user_message_detailed(message_data: ChatMessage):
         }
         
     except Exception as e:
-        logger.error(f"❌ Message routing analysis error: {e}")
-        raise HTTPException(status_code=500, detail=f"Routing analysis failed: {str(e)}")
+        logger.error(f"❌ Message routing analysis error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # Duplicate route removed - using AI Intent Router above
@@ -186,8 +186,8 @@ async def analyze_intent(text: str):
         }
         
     except Exception as e:
-        logger.error(f"❌ Intent analysis error: {e}")
-        raise HTTPException(status_code=500, detail=f"Intent analysis failed: {str(e)}")
+        logger.error(f"❌ Intent analysis error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # Helper functions for AI-powered routing

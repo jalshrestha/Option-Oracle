@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
+import { useEffect, useState, type ReactNode } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { useAuth } from '@/providers/auth-provider'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
 
@@ -10,15 +11,32 @@ interface AppShellProps {
   children: ReactNode
 }
 
-const AUTH_ROUTES = ['/auth']
+const FULL_SCREEN_ROUTES = ['/auth', '/landing']
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { isReady, user } = useAuth()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
-  // Auth routes render full-screen without sidebar or header
-  if (AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
+  const isFullScreen = FULL_SCREEN_ROUTES.some((r) => pathname.startsWith(r))
+
+  // Redirect unauthenticated (no user at all) to landing after auth resolves
+  useEffect(() => {
+    if (isFullScreen || !isReady) return
+    if (!user) {
+      router.replace('/landing')
+    }
+  }, [isReady, user, isFullScreen, router])
+
+  // Full-screen routes (landing, auth) — no sidebar or header
+  if (isFullScreen) {
     return <>{children}</>
+  }
+
+  // Block all dashboard rendering until auth resolves — eliminates the flash
+  if (!isReady || !user) {
+    return null
   }
 
   return (

@@ -12,9 +12,7 @@ const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.05,
-    },
+    transition: { staggerChildren: 0.05 },
   },
 }
 
@@ -31,7 +29,6 @@ export default function Dashboard() {
       animate="visible"
       className="space-y-6"
     >
-      {/* Hero Row - 3 Stat Cards */}
       <motion.section
         variants={itemVariants}
         className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
@@ -41,12 +38,10 @@ export default function Dashboard() {
         <SystemHealthCard />
       </motion.section>
 
-      {/* Hot Stocks Grid */}
       <motion.section variants={itemVariants}>
         <HotStocksGrid />
       </motion.section>
 
-      {/* Two Column Split */}
       <motion.section
         variants={itemVariants}
         className="grid gap-6 lg:grid-cols-5"
