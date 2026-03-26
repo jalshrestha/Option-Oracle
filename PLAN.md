@@ -133,14 +133,14 @@
 | Item | Status | Notes |
 |------|--------|-------|
 | Backend unit + integration + e2e tests | ✅ | ML, agents, indicators, routes |
-| Auth route tests (`/register`, `/login`, `/refresh`) | ❌ | Not yet covered |
+| Auth route tests (`/register`, `/login`, `/refresh`, `/logout`, `/me`) | ✅ | 26 tests, all pass — happy + error paths |
 | Frontend tests | ❌ | No test files at all |
 
 ---
 
 ## WHAT'S ACTUALLY LEFT (Prioritized)
 
-### ✅ Completed (2026-03-26)
+### ✅ Completed (2026-03-26 → 2026-03-26)
 - ~~Full frontend/backend audit — confirmed most pages already wired to real APIs~~
 - ~~Enable TypeScript strict build (`ignoreBuildErrors: false` in `next.config.mjs`)~~
 - ~~PLAN.md created with accurate project status~~
@@ -150,12 +150,11 @@
 - ~~Move DB password to env var in `docker-compose.yml` (was already `${POSTGRES_PASSWORD}` — confirmed)~~
 - ~~Add auth guard to `GET /api/v1/system/config` (was already guarded — confirmed)~~
 - ~~Scrub `str(e)` responses from `main.py`, `chat_router.py`, `system.py` — replaced with generic messages, exc_info logged server-side~~
+- ~~Add auth route tests — 26 tests covering `/register`, `/login`, `/logout`, `/refresh`, `/me`; happy + all error paths; 26/26 pass~~
 
 ### 🔴 Next Up
 
-### 🟡 Security Hardening
-
-6. **Add auth route tests** (`/register`, `/login`, `/refresh` — happy + error paths)
+*(All security hardening items complete — see Future / Nice to Have below)*
 
 ### 🟢 Future / Nice to Have
 
