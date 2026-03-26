@@ -311,3 +311,33 @@ export interface SessionResponse {
   expires_in: number
   created_at: number
 }
+
+export interface TokenResponse {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  expires_in: number
+}
+
+export interface UserProfile {
+  id: string
+  email: string
+  username: string
+  risk_profile: RiskProfile
+  is_active: boolean
+  is_verified: boolean
+  created_at: string
+}
+
+export interface RecentSignalItem {
+  id: string
+  symbol: string
+  direction: SignalDirection
+  strength: SignalStrength
+  confidence_score: number
+  market_scenario: MarketScenario
+  created_at: string
+}
+
+// AnalysisResult alias for component compatibility
+export type AnalysisResult = AnalysisResponse

@@ -3,17 +3,20 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Sun, Moon, Bell, Shield } from 'lucide-react'
+import { Search, Sun, Moon, Bell, Shield, LogIn, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useSystemHealth } from '@/lib/hooks/use-api'
+import { useAuth } from '@/providers/auth-provider'
 import { cn } from '@/lib/utils'
 import { CommandPalette } from './command-palette'
+import Link from 'next/link'
 
 export function Header() {
   const { theme, setTheme } = useTheme()
   const { data: health } = useSystemHealth()
+  const { user, logout } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
 
@@ -121,11 +124,39 @@ export function Header() {
             <Bell className="h-4 w-4" />
           </Button>
 
-          {/* Risk Profile */}
-          <Badge variant="secondary" className="hidden gap-1.5 sm:flex">
-            <Shield className="h-3 w-3" />
-            <span>Moderate</span>
-          </Badge>
+          {/* User / Auth */}
+          {user && !user.email.includes('@anon.example.com') ? (
+            <div className="hidden items-center gap-2 sm:flex">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full brand-gradient">
+                  <User className="h-3 w-3 text-white" />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground max-w-[100px] truncate">
+                  {user.username || user.email.split('@')[0]}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                onClick={() => logout()}
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Link href="/auth">
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden gap-1.5 sm:flex border-primary/30 text-primary hover:bg-primary/10"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                Sign In
+              </Button>
+            </Link>
+          )}
         </div>
       </header>
 

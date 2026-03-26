@@ -74,7 +74,7 @@ async def get_portfolio_performance(
         "total_return": 0.0,
         "total_return_percent": 0.0,
         "win_rate": 0.0,
-        "note": "Full performance history coming in a future phase.",
+        "performance_history": [],
     }
 
 

@@ -14,15 +14,6 @@ export function MarketPulseCard() {
   
   const indices = stocks?.filter((stock) => INDICES.includes(stock.symbol)) || []
 
-  // Mock data for demo when API is not available
-  const mockIndices = [
-    { symbol: 'SPY', price: 512.34, changePercent: 0.87 },
-    { symbol: 'QQQ', price: 438.92, changePercent: 1.23 },
-    { symbol: 'IWM', price: 207.15, changePercent: -0.34 },
-  ]
-
-  const displayData = indices.length > 0 ? indices : mockIndices
-
   return (
     <Card className="glass dark:glass border-border">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -39,8 +30,12 @@ export function MarketPulseCard() {
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
           </>
+        ) : indices.length === 0 ? (
+          <p className="py-4 text-center text-xs text-muted-foreground">
+            Market data loading…
+          </p>
         ) : (
-          displayData.map((index) => (
+          indices.map((index) => (
             <div
               key={index.symbol}
               className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2"

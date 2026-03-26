@@ -5,9 +5,9 @@ services:
     image: postgres:16-alpine
     container_name: option_oracle_db
     environment:
-      POSTGRES_USER: oracle
-      POSTGRES_PASSWORD: oracle_dev
-      POSTGRES_DB: option_oracle
+      POSTGRES_USER: ${POSTGRES_USER:-oracle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-option_oracle}
     ports:
       - "5434:5432"
     volumes:
@@ -28,7 +28,8 @@ services:
       - ./backend/.env
     environment:
       # Override localhost URL from .env — inside Docker the DB is reachable via service name
-      DATABASE_URL: postgresql+asyncpg://oracle:oracle_dev@postgres:5432/option_oracle
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oracle}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-option_oracle}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
     volumes:
       - ./backend/logs:/app/logs
     depends_on:

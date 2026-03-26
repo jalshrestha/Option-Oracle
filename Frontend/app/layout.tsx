@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
-import { SessionProvider } from '@/providers/session-provider'
+import { AuthProvider } from '@/providers/auth-provider'
 import { AppShell } from '@/components/layout/app-shell'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
@@ -66,10 +66,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <SessionProvider>
+          <AuthProvider>
             <AppShell>{children}</AppShell>
             <Toaster />
-          </SessionProvider>
+          </AuthProvider>
         </ThemeProvider>
         <Analytics />
       </body>

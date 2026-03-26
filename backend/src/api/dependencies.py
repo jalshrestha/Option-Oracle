@@ -4,6 +4,7 @@ FastAPI dependency providers — DB session, services, session validation, and r
 import functools
 import math
 import time
+import uuid
 from threading import Lock
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -70,31 +71,42 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 # ---------------------------------------------------------------------------
-# Session dependency
+# JWT-based user dependency
+# ---------------------------------------------------------------------------
+
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Decode the Bearer JWT and return the authenticated User row."""
+    from src.auth.jwt import decode_token
+    from src.repositories.users import UserRepository
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    token = authorization.removeprefix("Bearer ")
+    payload = decode_token(token)
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Access token required")
+    user = await UserRepository(db).get_by_id(uuid.UUID(payload["sub"]))
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Session compatibility wrapper — keeps existing route handlers working
 # ---------------------------------------------------------------------------
 
 async def get_current_session(
-    x_session_token: Optional[str] = Header(None),
-    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Resolve and validate the caller's browser session.
-
-    Returns a minimal temp session when no token is provided (demo / dev mode).
-    """
-    if not x_session_token:
-        return {
-            "session_token": "temp",
-            "risk_profile": "moderate",
-            "preferences": {},
-        }
-
-    session_repo = SessionRepository(db)
-    session = await session_repo.get(x_session_token)
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session token")
-
-    await session_repo.touch(x_session_token)
-    return session
+    """Thin wrapper — returns the same dict shape all existing routes expect."""
+    return {
+        "session_token": str(user.id),
+        "risk_profile": getattr(user, "risk_profile", "moderate"),
+        "preferences": {},
+    }
 
 
 # ---------------------------------------------------------------------------

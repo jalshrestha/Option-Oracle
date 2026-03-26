@@ -14,105 +14,220 @@ import type {
   PositionSchema,
   Quiz,
   RiskProfile,
-  SessionResponse,
   SystemHealth,
   SystemMetrics,
   TechnicalResponse,
   TradeRequest,
   Greeks,
   RiskMetrics,
+  TokenResponse,
+  UserProfile,
+  RecentSignalItem,
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
-const SESSION_TOKEN_KEY = 'oracle_session_token'
+const ACCESS_TOKEN_KEY = 'oracle_access_token'
+const REFRESH_TOKEN_KEY = 'oracle_refresh_token'
 
-function getSessionToken(): string | null {
+export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(SESSION_TOKEN_KEY)
+  return localStorage.getItem(ACCESS_TOKEN_KEY)
 }
 
-function setSessionToken(token: string): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(SESSION_TOKEN_KEY, token)
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(REFRESH_TOKEN_KEY)
 }
 
-function clearSessionToken(): void {
+export function setTokens(access: string, refresh: string): void {
   if (typeof window === 'undefined') return
-  localStorage.removeItem(SESSION_TOKEN_KEY)
+  localStorage.setItem(ACCESS_TOKEN_KEY, access)
+  localStorage.setItem(REFRESH_TOKEN_KEY, refresh)
+}
+
+export function clearTokens(): void {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
+}
+
+let isRefreshing = false
+let refreshListeners: Array<(token: string | null) => void> = []
+
+async function attemptRefresh(): Promise<string | null> {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return null
+
+  const response = await fetch(`${BASE_URL}/api/v1/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+
+  if (!response.ok) {
+    clearTokens()
+    return null
+  }
+
+  const data: TokenResponse = await response.json()
+  setTokens(data.access_token, data.refresh_token || refreshToken)
+  return data.access_token
+}
+
+async function getValidAccessToken(): Promise<string | null> {
+  const token = getAccessToken()
+  if (!token) return null
+  return token
 }
 
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getSessionToken()
-  
-  const headers: HeadersInit = {
+  const token = await getValidAccessToken()
+
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers as Record<string, string>),
   }
-  
+
   if (token) {
-    ;(headers as Record<string, string>)['X-Session-Token'] = token
+    headers['Authorization'] = `Bearer ${token}`
   }
-  
+
   const response = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
     headers,
   })
-  
+
   if (response.status === 401) {
-    clearSessionToken()
-    // Attempt to re-create session
-    const newSession = await createSession('moderate')
-    if (newSession.token) {
-      setSessionToken(newSession.token)
-      // Retry the request
-      ;(headers as Record<string, string>)['X-Session-Token'] = newSession.token
-      const retryResponse = await fetch(`${BASE_URL}${endpoint}`, {
-        ...options,
-        headers,
-      })
-      if (!retryResponse.ok) {
-        throw new Error(`API Error: ${retryResponse.status}`)
+    // Try refresh
+    if (!isRefreshing) {
+      isRefreshing = true
+      try {
+        const newToken = await attemptRefresh()
+        isRefreshing = false
+        refreshListeners.forEach((cb) => cb(newToken))
+        refreshListeners = []
+
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`
+          const retryResponse = await fetch(`${BASE_URL}${endpoint}`, {
+            ...options,
+            headers,
+          })
+          if (!retryResponse.ok) {
+            throw new Error(`API Error: ${retryResponse.status}`)
+          }
+          return retryResponse.json()
+        }
+      } catch (err) {
+        isRefreshing = false
+        refreshListeners.forEach((cb) => cb(null))
+        refreshListeners = []
+        clearTokens()
       }
-      return retryResponse.json()
+    } else {
+      // Queue behind the ongoing refresh
+      await new Promise<void>((resolve) => {
+        refreshListeners.push(() => resolve())
+      })
+      const newToken = getAccessToken()
+      if (newToken) {
+        headers['Authorization'] = `Bearer ${newToken}`
+        const retryResponse = await fetch(`${BASE_URL}${endpoint}`, {
+          ...options,
+          headers,
+        })
+        if (!retryResponse.ok) {
+          throw new Error(`API Error: ${retryResponse.status}`)
+        }
+        return retryResponse.json()
+      }
     }
+
+    throw new Error('Unauthorized')
   }
-  
+
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status}`)
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(
+      (errorData as any)?.detail || `API Error: ${response.status}`
+    )
   }
-  
+
   return response.json()
 }
 
-// Session Management
-export async function createSession(
-  riskProfile: RiskProfile = 'moderate'
-): Promise<SessionResponse> {
-  const response = await fetch(
-    `${BASE_URL}/api/v1/session/create?risk_profile=${riskProfile}`,
-    { method: 'POST' }
-  )
-  const data = await response.json()
-  if (data.session_token) {
-    setSessionToken(data.session_token)
+// Auth
+export async function register(
+  email: string,
+  username: string,
+  password: string
+): Promise<TokenResponse> {
+  const response = await fetch(`${BASE_URL}/api/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, username, password }),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    const detail = (err as any)?.detail
+    const oracleError = (err as any)?.error  // custom error handler format
+    const msg = oracleError
+      ? oracleError
+      : Array.isArray(detail)
+        ? detail.map((d: any) => d.msg || d.message || String(d)).join('; ')
+        : typeof detail === 'string' ? detail : `Register failed: ${response.status}`
+    throw new Error(`${response.status}:${msg}`)
   }
+  const data: TokenResponse = await response.json()
+  setTokens(data.access_token, data.refresh_token)
   return data
 }
 
-export async function ensureSession(): Promise<void> {
-  const token = getSessionToken()
-  if (!token) {
-    await createSession('moderate')
+export async function login(
+  email: string,
+  password: string
+): Promise<TokenResponse> {
+  const response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    const detail = (err as any)?.detail
+    const oracleError = (err as any)?.error  // custom error handler format
+    const msg = oracleError
+      ? oracleError
+      : Array.isArray(detail)
+        ? detail.map((d: any) => d.msg || d.message || String(d)).join('; ')
+        : typeof detail === 'string' ? detail : `Login failed: ${response.status}`
+    throw new Error(`${response.status}:${msg}`)
   }
+  const data: TokenResponse = await response.json()
+  setTokens(data.access_token, data.refresh_token)
+  return data
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await apiRequest('/api/v1/auth/logout', { method: 'POST' })
+  } finally {
+    clearTokens()
+  }
+}
+
+export async function getMe(): Promise<UserProfile> {
+  return apiRequest('/api/v1/auth/me')
 }
 
 // Health & System
 export async function getHealth(): Promise<{ status: string }> {
-  return apiRequest('/health')
+  const response = await fetch(`${BASE_URL}/health`)
+  return response.json()
 }
 
 export async function getSystemHealth(): Promise<SystemHealth> {
@@ -144,6 +259,12 @@ export async function getAnalysisHistory(
   limit = 10
 ): Promise<AnalysisResponse[]> {
   return apiRequest(`/api/v1/analysis/history/${symbol}?limit=${limit}`)
+}
+
+export async function getRecentSignals(
+  limit = 20
+): Promise<RecentSignalItem[]> {
+  return apiRequest(`/api/v1/analysis/signals/recent?limit=${limit}`)
 }
 
 // Stocks
@@ -239,6 +360,15 @@ export async function getPortfolioSummary(): Promise<PortfolioSummaryResponse> {
   return apiRequest('/api/v1/trading/portfolio/summary')
 }
 
+export async function getPortfolioPerformance(): Promise<{
+  total_return: number
+  total_return_percent: number
+  win_rate: number
+  performance_history: { date: string; value: number }[]
+}> {
+  return apiRequest('/api/v1/portfolio/performance')
+}
+
 export async function getGreeks(): Promise<Greeks> {
   return apiRequest('/api/v1/portfolio/greeks')
 }
@@ -307,5 +437,8 @@ export async function getLearningPath(level?: string): Promise<LearningPath> {
   return apiRequest(`/api/v1/education/learning-path${query}`)
 }
 
-// Export utilities
-export { getSessionToken, setSessionToken, clearSessionToken }
+// Legacy compat — kept so old imports don't break while migrating
+export const getSessionToken = getAccessToken
+export const setSessionToken = (token: string) =>
+  typeof window !== 'undefined' && localStorage.setItem(ACCESS_TOKEN_KEY, token)
+export const clearSessionToken = clearTokens

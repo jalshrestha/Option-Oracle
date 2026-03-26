@@ -156,16 +156,14 @@ export default function ChatPage() {
       }
 
       setMessages((prev) => [...prev, assistantMessage])
-    } catch (error) {
-      // Mock response for demo
-      const mockResponse: Message = {
+    } catch (error: any) {
+      const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content:
-          "I'd be happy to help you analyze that stock! Based on my AI analysis, I can see several key factors to consider. Let me break down the technical indicators, sentiment analysis, and options flow data for you.",
+        content: 'Oracle is temporarily unavailable. Please try again.',
         timestamp: new Date(),
       }
-      setMessages((prev) => [...prev, mockResponse])
+      setMessages((prev) => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
     }

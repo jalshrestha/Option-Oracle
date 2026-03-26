@@ -36,7 +36,7 @@ import {
   Cell,
 } from "recharts";
 import { formatCurrency, formatPercent } from "@/lib/utils/format";
-import { getPortfolioSummary, getPositions } from "@/lib/api/client";
+import { getPortfolioSummary, getPositions, getPortfolioPerformance } from "@/lib/api/client";
 
 const ALLOCATION_COLORS = [
   "hsl(var(--accent))",
@@ -46,11 +46,6 @@ const ALLOCATION_COLORS = [
   "#8b5cf6",
   "#06b6d4",
 ];
-
-const performanceHistory = Array.from({ length: 30 }, (_, i) => ({
-  date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000).toLocaleDateString(),
-  value: 100000 + i * 500,
-}));
 
 export default function PortfolioPage() {
   const [filterType, setFilterType] = useState("all");
@@ -66,6 +61,14 @@ export default function PortfolioPage() {
     getPositions,
     { refreshInterval: 30000 }
   );
+
+  const { data: performanceData } = useSWR(
+    "portfolio-performance",
+    getPortfolioPerformance,
+    { revalidateOnFocus: false }
+  );
+
+  const performanceHistory = performanceData?.performance_history ?? [];
 
   const totalGain = portfolio
     ? (portfolio.unrealized_pnl ?? 0) + (portfolio.realized_pnl ?? 0)
@@ -224,26 +227,32 @@ export default function PortfolioPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={performanceHistory}>
-                  <defs>
-                    <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                  <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} tickLine={{ stroke: "hsl(var(--border))" }} />
-                  <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} tickLine={{ stroke: "hsl(var(--border))" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
-                    formatter={(value: number) => [formatCurrency(value), "Value"]}
-                  />
-                  <Area type="monotone" dataKey="value" stroke="hsl(var(--accent))" fill="url(#portfolioGradient)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {performanceHistory.length === 0 ? (
+              <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
+                Performance chart will appear after your first trade.
+              </div>
+            ) : (
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={performanceHistory}>
+                    <defs>
+                      <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                    <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} tickLine={{ stroke: "hsl(var(--border))" }} />
+                    <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} tickLine={{ stroke: "hsl(var(--border))" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
+                      formatter={(value: number) => [formatCurrency(value), "Value"]}
+                    />
+                    <Area type="monotone" dataKey="value" stroke="hsl(var(--accent))" fill="url(#portfolioGradient)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -1,7 +1,7 @@
 """
 Neural Options Oracle++ Education API Routes
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Literal, Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 import time
@@ -83,8 +83,8 @@ async def education_info() -> Dict[str, Any]:
 @router.get("/content")
 async def get_educational_content(
     topic: Optional[str] = None,
-    difficulty: Optional[str] = None,
-    content_type: Optional[str] = None,
+    difficulty: Optional[Literal["beginner", "intermediate", "advanced"]] = None,
+    content_type: Optional[Literal["article", "video", "quiz", "lesson"]] = None,
     limit: int = 10,
     session: Dict = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),

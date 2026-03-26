@@ -29,16 +29,19 @@ def setup_logging() -> None:
         "{message}"
     )
     
+    # Verbose diagnostics only in non-production environments
+    _verbose = settings.env != "production"
+
     # Add console handler
     logger.add(
         sys.stderr,
         format=console_format,
         level=settings.log_level,
         colorize=True,
-        backtrace=True,
-        diagnose=True
+        backtrace=_verbose,
+        diagnose=_verbose,
     )
-    
+
     # Add file handler for all logs
     logger.add(
         "logs/neural_oracle.log",
@@ -46,10 +49,10 @@ def setup_logging() -> None:
         level="DEBUG",
         rotation="10 MB",
         retention="7 days",
-        backtrace=True,
-        diagnose=True
+        backtrace=_verbose,
+        diagnose=_verbose,
     )
-    
+
     # Add separate file handler for errors
     logger.add(
         "logs/neural_oracle_errors.log",
@@ -57,8 +60,8 @@ def setup_logging() -> None:
         level="ERROR",
         rotation="5 MB",
         retention="30 days",
-        backtrace=True,
-        diagnose=True
+        backtrace=_verbose,
+        diagnose=_verbose,
     )
     
     # Add API access log handler
