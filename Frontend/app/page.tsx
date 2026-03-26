@@ -1,6 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { useAuth } from '@/providers/auth-provider'
 import { MarketPulseCard } from '@/components/dashboard/market-pulse-card'
 import { ActiveSessionCard } from '@/components/dashboard/active-session-card'
 import { SystemHealthCard } from '@/components/dashboard/system-health-card'
@@ -12,9 +15,7 @@ const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.05,
-    },
+    transition: { staggerChildren: 0.05 },
   },
 }
 
@@ -23,7 +24,27 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 }
 
+function isAnonymousUser(email: string | undefined): boolean {
+  return !email || email.includes('@anon.example.com')
+}
+
 export default function Dashboard() {
+  const { isReady, user } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isReady) return
+    // Redirect anonymous/unauthenticated visitors to the landing page
+    if (isAnonymousUser(user?.email)) {
+      router.replace('/landing')
+    }
+  }, [isReady, user, router])
+
+  // Show nothing while auth is loading or during redirect
+  if (!isReady || isAnonymousUser(user?.email)) {
+    return null
+  }
+
   return (
     <motion.div
       variants={containerVariants}
