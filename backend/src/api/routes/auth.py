@@ -32,7 +32,7 @@ def _require_user(authorization: Optional[str], repo: UserRepository):
 async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
-    _rate: None = Depends(get_rate_limiter(3)),
+    _rate: None = Depends(get_rate_limiter(20)),
 ) -> TokenResponse:
     repo = UserRepository(db)
 
@@ -57,7 +57,7 @@ async def register(
 async def login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_db),
-    _rate: None = Depends(get_rate_limiter(5)),
+    _rate: None = Depends(get_rate_limiter(20)),
 ) -> TokenResponse:
     repo = UserRepository(db)
     user = await repo.get_by_email(body.email)
@@ -84,7 +84,7 @@ async def logout(_rate: None = Depends(get_rate_limiter(20))) -> Dict[str, Any]:
 async def refresh(
     body: RefreshRequest,
     db: AsyncSession = Depends(get_db),
-    _rate: None = Depends(get_rate_limiter(10)),
+    _rate: None = Depends(get_rate_limiter(20)),
 ) -> TokenResponse:
     payload = decode_token(body.refresh_token)
     if payload.get("type") != "refresh":
