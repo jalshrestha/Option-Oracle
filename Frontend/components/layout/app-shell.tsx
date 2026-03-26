@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
@@ -9,8 +10,16 @@ interface AppShellProps {
   children: ReactNode
 }
 
+const AUTH_ROUTES = ['/auth']
+
 export function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  // Auth routes render full-screen without sidebar or header
+  if (AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
+    return <>{children}</>
+  }
 
   return (
     <div className="min-h-screen bg-background">
