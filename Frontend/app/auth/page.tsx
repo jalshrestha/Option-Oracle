@@ -34,13 +34,26 @@ export default function AuthPage() {
       }
       router.push('/')
     } catch (err: any) {
-      const msg = err.message || ''
-      if (msg.includes('409') || msg.toLowerCase().includes('already')) {
+      const raw = err.message || ''
+      const [statusStr, ...rest] = raw.split(':')
+      const status = parseInt(statusStr, 10)
+      const detail = rest.join(':').trim()
+
+      if (status === 409 || detail.toLowerCase().includes('already') || detail.toLowerCase().includes('taken')) {
         setError('An account with this email or username already exists.')
-      } else if (msg.includes('401') || msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('incorrect')) {
+      } else if (status === 401) {
         setError('Invalid email or password.')
+      } else if (status === 422) {
+        // FastAPI validation — clean up the message
+        const clean = detail
+          .replace(/Value error,\s*/gi, '')
+          .replace(/String should have at least (\d+) character[s]*/gi, 'Password must be at least $1 characters')
+          .replace(/value is not a valid email address[^;]*/gi, 'Enter a valid email address')
+        setError(clean || 'Please check your input and try again.')
+      } else if (status === 429) {
+        setError('Too many attempts. Please wait a minute and try again.')
       } else {
-        setError(msg || 'Something went wrong. Please try again.')
+        setError(detail || 'Something went wrong. Please try again.')
       }
     } finally {
       setLoading(false)
@@ -203,11 +216,9 @@ export default function AuthPage() {
                     <Label htmlFor="password" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Password
                     </Label>
-                    {tab === 'login' && (
-                      <span className="text-xs text-muted-foreground">
-                        Min. 8 characters
-                      </span>
-                    )}
+                    <span className="text-xs text-muted-foreground">
+                      Min. 8 characters
+                    </span>
                   </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

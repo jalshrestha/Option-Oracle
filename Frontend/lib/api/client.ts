@@ -173,7 +173,14 @@ export async function register(
   })
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
-    throw new Error((err as any)?.detail || `Register failed: ${response.status}`)
+    const detail = (err as any)?.detail
+    const oracleError = (err as any)?.error  // custom error handler format
+    const msg = oracleError
+      ? oracleError
+      : Array.isArray(detail)
+        ? detail.map((d: any) => d.msg || d.message || String(d)).join('; ')
+        : typeof detail === 'string' ? detail : `Register failed: ${response.status}`
+    throw new Error(`${response.status}:${msg}`)
   }
   const data: TokenResponse = await response.json()
   setTokens(data.access_token, data.refresh_token)
@@ -191,7 +198,14 @@ export async function login(
   })
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
-    throw new Error((err as any)?.detail || `Login failed: ${response.status}`)
+    const detail = (err as any)?.detail
+    const oracleError = (err as any)?.error  // custom error handler format
+    const msg = oracleError
+      ? oracleError
+      : Array.isArray(detail)
+        ? detail.map((d: any) => d.msg || d.message || String(d)).join('; ')
+        : typeof detail === 'string' ? detail : `Login failed: ${response.status}`
+    throw new Error(`${response.status}:${msg}`)
   }
   const data: TokenResponse = await response.json()
   setTokens(data.access_token, data.refresh_token)
