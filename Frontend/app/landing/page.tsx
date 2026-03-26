@@ -4,14 +4,15 @@ import { useRef, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 
-// ── WebGL Lightning (exact from design, hue=220 blue) ────────────────────────
+// ── WebGL Lightning ────────────────────────────────────────────────────────────
+// Uses simple sin-wave noise — avoids hash/swizzle mediump issues in GLSL ES 1.0
 const Lightning: React.FC<{
   hue?: number
   xOffset?: number
   speed?: number
   intensity?: number
   size?: number
-}> = ({ hue = 220, xOffset = 0, speed = 1.6, intensity = 0.6, size = 2 }) => {
+}> = ({ hue = 220, xOffset = 0, speed = 1.6, intensity = 0.6 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -27,34 +28,66 @@ const Lightning: React.FC<{
     if (!gl) return
 
     const vertSrc = `attribute vec2 aPosition;void main(){gl_Position=vec4(aPosition,0.0,1.0);}`
-    // mainImage(out vec4,...) pattern fails in GLSL ES 1.0 — logic inlined into main() instead
-    const fragSrc = `precision mediump float;
-uniform vec2 iResolution;uniform float iTime;uniform float uHue;uniform float uXOffset;uniform float uSpeed;uniform float uIntensity;uniform float uSize;
-vec3 hsv2rgb(vec3 c){vec3 rgb=clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);return c.z*mix(vec3(1.0),rgb,c.y);}
-float hash11(float p){p=fract(p*.1031);p*=p+33.33;p*=p+p;return fract(p);}
-float hash12(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
-mat2 rotate2d(float theta){float c=cos(theta);float s=sin(theta);return mat2(c,-s,s,c);}
-float noise(vec2 p){vec2 ip=floor(p);vec2 fp=fract(p);float a=hash12(ip);float b=hash12(ip+vec2(1.0,0.0));float c2=hash12(ip+vec2(0.0,1.0));float d=hash12(ip+vec2(1.0,1.0));vec2 t=smoothstep(0.0,1.0,fp);return mix(mix(a,b,t.x),mix(c2,d,t.x),t.y);}
-float fbm(vec2 p){float value=0.0;float amplitude=0.5;for(int i=0;i<10;++i){value+=amplitude*noise(p);p*=rotate2d(0.45);p*=2.0;amplitude*=0.5;}return value;}
-void main(){vec2 uv=gl_FragCoord.xy/iResolution.xy;uv=2.0*uv-1.0;uv.x*=iResolution.x/iResolution.y;uv.x+=uXOffset;uv+=2.0*fbm(uv*uSize+0.8*iTime*uSpeed)-1.0;float dist=abs(uv.x);vec3 baseColor=hsv2rgb(vec3(uHue/360.0,0.7,0.8));vec3 col=baseColor*pow(mix(0.0,0.07,hash11(iTime*uSpeed))/dist,1.0)*uIntensity;gl_FragColor=vec4(col,1.0);}`
+    // Simple sin-wave lightning: no hash functions, no swizzle chains — safe on all GLSL ES 1.0 drivers
+    const fragSrc = [
+      'precision mediump float;',
+      'uniform vec2 iResolution;',
+      'uniform float iTime;',
+      'uniform float uHue;',
+      'uniform float uIntensity;',
+      'uniform float uSpeed;',
+      'uniform float uXOffset;',
+      'vec3 hue2rgb(float h){',
+      '  float r=clamp(abs(h*6.0-3.0)-1.0,0.0,1.0);',
+      '  float g=clamp(2.0-abs(h*6.0-2.0),0.0,1.0);',
+      '  float b=clamp(2.0-abs(h*6.0-4.0),0.0,1.0);',
+      '  return vec3(r,g,b);',
+      '}',
+      'void main(){',
+      '  float aspect=iResolution.x/iResolution.y;',
+      '  float x=(gl_FragCoord.x/iResolution.x-0.5)*aspect+uXOffset;',
+      '  float y=gl_FragCoord.y/iResolution.y;',
+      '  float t=iTime*uSpeed;',
+      '  float nx=x',
+      '    +sin(y*3.1+t*0.9)*0.14',
+      '    +sin(y*7.3-t*1.4)*0.07',
+      '    +sin(y*15.7+t*2.2)*0.035',
+      '    +sin(y*31.3-t*0.6)*0.018;',
+      '  float d=abs(nx);',
+      '  float g=0.038/(d+0.009);',
+      '  g=min(g,3.0);',
+      '  gl_FragColor=vec4(hue2rgb(uHue/360.0)*g*uIntensity,1.0);',
+      '}',
+    ].join('\n')
 
-    const compile = (src: string, type: number) => {
-      const s = gl.createShader(type)!
+    const compileShader = (src: string, type: number) => {
+      const s = gl.createShader(type)
+      if (!s) return null
       gl.shaderSource(s, src)
       gl.compileShader(s)
       if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-        console.error('Shader compile error:', gl.getShaderInfoLog(s))
+        console.error('GLSL compile error:', gl.getShaderInfoLog(s))
+        gl.deleteShader(s)
+        return null
       }
       return s
     }
-    const vs = compile(vertSrc, gl.VERTEX_SHADER)
-    const fs = compile(fragSrc, gl.FRAGMENT_SHADER)
-    const prog = gl.createProgram()!
+
+    const vs = compileShader(vertSrc, gl.VERTEX_SHADER)
+    const fs = compileShader(fragSrc, gl.FRAGMENT_SHADER)
+    if (!vs || !fs) {
+      window.removeEventListener('resize', resizeCanvas)
+      return
+    }
+
+    const prog = gl.createProgram()
+    if (!prog) return
     gl.attachShader(prog, vs)
     gl.attachShader(prog, fs)
     gl.linkProgram(prog)
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      console.error('Shader link error:', gl.getProgramInfoLog(prog))
+      console.error('GLSL link error:', gl.getProgramInfoLog(prog))
+      window.removeEventListener('resize', resizeCanvas)
       return
     }
     gl.useProgram(prog)
@@ -73,7 +106,6 @@ void main(){vec2 uv=gl_FragCoord.xy/iResolution.xy;uv=2.0*uv-1.0;uv.x*=iResoluti
     const uXOff = gl.getUniformLocation(prog, 'uXOffset')
     const uSpd = gl.getUniformLocation(prog, 'uSpeed')
     const uInt = gl.getUniformLocation(prog, 'uIntensity')
-    const uSz = gl.getUniformLocation(prog, 'uSize')
 
     const start = performance.now()
     let raf = 0
@@ -86,7 +118,6 @@ void main(){vec2 uv=gl_FragCoord.xy/iResolution.xy;uv=2.0*uv-1.0;uv.x*=iResoluti
       gl.uniform1f(uXOff, xOffset)
       gl.uniform1f(uSpd, speed)
       gl.uniform1f(uInt, intensity)
-      gl.uniform1f(uSz, size)
       gl.drawArrays(gl.TRIANGLES, 0, 6)
       raf = requestAnimationFrame(render)
     }
@@ -95,7 +126,7 @@ void main(){vec2 uv=gl_FragCoord.xy/iResolution.xy;uv=2.0*uv-1.0;uv.x*=iResoluti
       window.removeEventListener('resize', resizeCanvas)
       cancelAnimationFrame(raf)
     }
-  }, [hue, xOffset, speed, intensity, size])
+  }, [hue, xOffset, speed, intensity])
 
   return <canvas ref={canvasRef} className="w-full h-full relative" />
 }
@@ -188,7 +219,6 @@ export default function LandingPage() {
             <Link
               href="/auth"
               className="hidden md:block px-4 py-2 text-sm text-white/70 hover:text-white transition-colors"
-              onClick={() => {}}
             >
               Register
             </Link>
@@ -354,7 +384,7 @@ export default function LandingPage() {
 
         {/* Lightning beam */}
         <div className="absolute top-0 w-[100%] left-1/2 transform -translate-x-1/2 h-full">
-          <Lightning hue={220} xOffset={0} speed={1.6} intensity={0.6} size={2} />
+          <Lightning hue={220} xOffset={0} speed={1.6} intensity={0.6} />
         </div>
 
         {/* Sphere (exact from design) */}

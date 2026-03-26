@@ -13,10 +13,6 @@ interface AppShellProps {
 
 const FULL_SCREEN_ROUTES = ['/auth', '/landing']
 
-function isAnonymousUser(email: string | undefined): boolean {
-  return !email || email.includes('@anon.example.com')
-}
-
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -24,15 +20,14 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const isFullScreen = FULL_SCREEN_ROUTES.some((r) => pathname.startsWith(r))
-  const isAnon = isAnonymousUser(user?.email)
 
-  // Redirect anonymous users to landing BEFORE rendering dashboard content
+  // Redirect unauthenticated (no user at all) to landing after auth resolves
   useEffect(() => {
     if (isFullScreen || !isReady) return
-    if (isAnon) {
+    if (!user) {
       router.replace('/landing')
     }
-  }, [isReady, isAnon, isFullScreen, router])
+  }, [isReady, user, isFullScreen, router])
 
   // Full-screen routes (landing, auth) — no sidebar or header
   if (isFullScreen) {
@@ -40,7 +35,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   // Block all dashboard rendering until auth resolves — eliminates the flash
-  if (!isReady || isAnon) {
+  if (!isReady || !user) {
     return null
   }
 
