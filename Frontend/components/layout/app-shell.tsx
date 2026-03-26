@@ -10,7 +10,7 @@ interface AppShellProps {
   children: ReactNode
 }
 
-const AUTH_ROUTES = ['/auth']
+const AUTH_ROUTES = ['/auth', '/landing']
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
