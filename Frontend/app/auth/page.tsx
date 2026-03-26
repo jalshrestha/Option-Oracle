@@ -141,11 +141,11 @@ export default function AuthPage() {
   }
 
   return (
-    <section className="fixed inset-0 bg-zinc-950 text-zinc-50">
+    <section className="fixed inset-0 bg-black text-white">
       {/* ── CSS animations (exact from design) ── */}
       <style>{`
         .accent-lines{position:absolute;inset:0;pointer-events:none;opacity:.7}
-        .hline,.vline{position:absolute;background:#27272a;will-change:transform,opacity}
+        .hline,.vline{position:absolute;background:#1e3a5f;will-change:transform,opacity}
         .hline{left:0;right:0;height:1px;transform:scaleX(0);transform-origin:50% 50%;animation:drawX .8s cubic-bezier(.22,.61,.36,1) forwards}
         .vline{top:0;bottom:0;width:1px;transform:scaleY(0);transform-origin:50% 0%;animation:drawY .9s cubic-bezier(.22,.61,.36,1) forwards}
         .hline:nth-child(1){top:18%;animation-delay:.12s}
@@ -154,7 +154,7 @@ export default function AuthPage() {
         .vline:nth-child(4){left:22%;animation-delay:.42s}
         .vline:nth-child(5){left:50%;animation-delay:.54s}
         .vline:nth-child(6){left:78%;animation-delay:.66s}
-        .hline::after,.vline::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(250,250,250,.24),transparent);opacity:0;animation:shimmer .9s ease-out forwards}
+        .hline::after,.vline::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(59,130,246,.2),transparent);opacity:0;animation:shimmer .9s ease-out forwards}
         .hline:nth-child(1)::after{animation-delay:.12s}
         .hline:nth-child(2)::after{animation-delay:.22s}
         .hline:nth-child(3)::after{animation-delay:.32s}
@@ -168,8 +168,8 @@ export default function AuthPage() {
         @keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
       `}</style>
 
-      {/* ── Vignette (exact from design) ── */}
-      <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(255,255,255,0.06),transparent_60%)]" />
+      {/* ── Vignette ── */}
+      <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(59,130,246,0.08),transparent_60%)]" />
 
       {/* ── Animated accent lines ── */}
       <div className="accent-lines">
@@ -188,7 +188,7 @@ export default function AuthPage() {
       />
 
       {/* ── Header ── */}
-      <header className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-zinc-800/80">
+      <header className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-white/8">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#7c6ff7] to-[#0ea5e9]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-white">
@@ -203,12 +203,12 @@ export default function AuthPage() {
               <line x1="15" y1="12" x2="18" y2="12" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
             </svg>
           </div>
-          <span className="text-xs tracking-[0.14em] uppercase text-zinc-400">Option Oracle</span>
+          <span className="text-xs tracking-[0.14em] uppercase text-white/40">Option Oracle</span>
         </div>
         <Button
           variant="outline"
           size="sm"
-          className="h-9 rounded-lg border-zinc-800 bg-zinc-900 text-zinc-50 hover:bg-zinc-800"
+          className="h-9 rounded-lg border-white/10 bg-white/5 text-white hover:bg-white/10"
         >
           <span className="mr-2 text-sm">Contact</span>
           <ArrowRight className="h-3.5 w-3.5" />
@@ -220,7 +220,7 @@ export default function AuthPage() {
         <div className="card-animate w-full max-w-sm">
 
           {/* Tab toggle above card */}
-          <div className="mb-4 flex rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
+          <div className="mb-4 flex rounded-xl border border-white/10 bg-white/5 p-1">
             {(['login', 'register'] as const).map((t) => (
               <button
                 key={t}
@@ -228,8 +228,8 @@ export default function AuthPage() {
                 className={cn(
                   'relative flex-1 rounded-lg py-2 text-sm font-medium transition-all duration-200',
                   tab === t
-                    ? 'bg-zinc-800 text-zinc-50 shadow-sm'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-white/10 text-white shadow-sm'
+                    : 'text-white/40 hover:text-white/70'
                 )}
               >
                 {t === 'login' ? 'Sign In' : 'Create Account'}
@@ -238,7 +238,7 @@ export default function AuthPage() {
           </div>
 
           {/* Main card */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur supports-[backdrop-filter]:bg-zinc-900/60 overflow-hidden">
+          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur supports-[backdrop-filter]:bg-black/60 overflow-hidden">
             <div className="px-6 pt-6 pb-2">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -248,10 +248,10 @@ export default function AuthPage() {
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.15 }}
                 >
-                  <h2 className="text-2xl font-semibold text-zinc-50">
+                  <h2 className="text-2xl font-semibold text-white">
                     {tab === 'login' ? 'Welcome back' : 'Create account'}
                   </h2>
-                  <p className="mt-1 text-sm text-zinc-400">
+                  <p className="mt-1 text-sm text-white/40">
                     {tab === 'login'
                       ? 'Sign in to your Option Oracle account'
                       : 'Start trading with AI precision today'}
@@ -273,9 +273,9 @@ export default function AuthPage() {
                 >
                   {/* Email */}
                   <div className="grid gap-2">
-                    <Label htmlFor="email" className="text-zinc-300">Email</Label>
+                    <Label htmlFor="email" className="text-white/60">Email</Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
                       <Input
                         id="email"
                         type="email"
@@ -284,7 +284,7 @@ export default function AuthPage() {
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="pl-10 bg-zinc-950 border-zinc-800 text-zinc-50 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-700/30"
+                        className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/15"
                       />
                     </div>
                   </div>
@@ -299,9 +299,9 @@ export default function AuthPage() {
                         transition={{ duration: 0.2 }}
                         className="grid gap-2 overflow-hidden"
                       >
-                        <Label htmlFor="username" className="text-zinc-300">Username</Label>
+                        <Label htmlFor="username" className="text-white/60">Username</Label>
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
                           <Input
                             id="username"
                             type="text"
@@ -313,10 +313,10 @@ export default function AuthPage() {
                             minLength={3}
                             maxLength={50}
                             pattern="[a-zA-Z0-9_]+"
-                            className="pl-10 bg-zinc-950 border-zinc-800 text-zinc-50 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-700/30"
+                            className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/15"
                           />
                         </div>
-                        <p className="text-xs text-zinc-600">Letters, numbers, and underscores only</p>
+                        <p className="text-xs text-white/25">Letters, numbers, and underscores only</p>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -324,15 +324,15 @@ export default function AuthPage() {
                   {/* Password */}
                   <div className="grid gap-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="password" className="text-zinc-300">Password</Label>
+                      <Label htmlFor="password" className="text-white/60">Password</Label>
                       {tab === 'login' && (
-                        <a href="#" className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
+                        <a href="#" className="text-sm text-white/40 hover:text-white/70 transition-colors">
                           Forgot password?
                         </a>
                       )}
                     </div>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
                       <Input
                         id="password"
                         type={showPassword ? 'text' : 'password'}
@@ -342,12 +342,12 @@ export default function AuthPage() {
                         placeholder="••••••••"
                         minLength={8}
                         autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
-                        className="pl-10 pr-10 bg-zinc-950 border-zinc-800 text-zinc-50 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-700/30"
+                        className="pl-10 pr-10 bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/15"
                       />
                       <button
                         type="button"
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-white/40 hover:text-white/70 transition-colors"
                         onClick={() => setShowPassword((v) => !v)}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -374,7 +374,7 @@ export default function AuthPage() {
                   <Button
                     type="submit"
                     disabled={loading}
-                    className="w-full h-10 rounded-lg bg-zinc-50 text-zinc-900 hover:bg-zinc-200 font-medium"
+                    className="w-full h-10 rounded-lg bg-white text-black hover:bg-white/90 font-medium"
                   >
                     {loading ? (
                       <span className="flex items-center gap-2">
@@ -394,10 +394,10 @@ export default function AuthPage() {
               {/* Divider */}
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-zinc-800" />
+                  <div className="w-full border-t border-white/10" />
                 </div>
                 <div className="relative flex justify-center">
-                  <span className="bg-zinc-900/70 px-2 text-[11px] uppercase tracking-widest text-zinc-500">or</span>
+                  <span className="bg-black/60 px-2 text-[11px] uppercase tracking-widest text-white/30">or</span>
                 </div>
               </div>
 
@@ -407,7 +407,7 @@ export default function AuthPage() {
                   type="button"
                   variant="outline"
                   onClick={() => handleOAuth('github')}
-                  className="h-10 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 hover:bg-zinc-900 hover:text-zinc-50"
+                  className="h-10 rounded-lg border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
                 >
                   <Github className="h-4 w-4 mr-2" />
                   GitHub
@@ -416,7 +416,7 @@ export default function AuthPage() {
                   type="button"
                   variant="outline"
                   onClick={() => handleOAuth('google')}
-                  className="h-10 rounded-lg border-zinc-800 bg-zinc-950 text-zinc-50 hover:bg-zinc-900 hover:text-zinc-50"
+                  className="h-10 rounded-lg border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
                 >
                   <GoogleIcon />
                   <span className="ml-2">Google</span>
@@ -430,7 +430,7 @@ export default function AuthPage() {
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    className="text-center text-xs text-zinc-500"
+                    className="text-center text-xs text-white/30"
                   >
                     {oauthNote}
                   </motion.p>
@@ -442,7 +442,7 @@ export default function AuthPage() {
                 type="button"
                 onClick={handleGuest}
                 disabled={!isReady}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-transparent py-2.5 text-sm text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-transparent py-2.5 text-sm text-white/40 transition-colors hover:border-white/20 hover:text-white/70 disabled:opacity-40"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Continue as Guest
@@ -450,13 +450,13 @@ export default function AuthPage() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-center px-6 pb-5 text-sm text-zinc-400">
+            <div className="flex items-center justify-center px-6 pb-5 text-sm text-white/40">
               {tab === 'login' ? (
                 <>
                   Don&apos;t have an account?{' '}
                   <button
                     onClick={() => { setTab('register'); setError(null) }}
-                    className="ml-1 text-zinc-200 hover:underline"
+                    className="ml-1 text-white/70 hover:underline"
                   >
                     Create one
                   </button>
@@ -466,7 +466,7 @@ export default function AuthPage() {
                   Already have an account?{' '}
                   <button
                     onClick={() => { setTab('login'); setError(null) }}
-                    className="ml-1 text-zinc-200 hover:underline"
+                    className="ml-1 text-white/70 hover:underline"
                   >
                     Sign in
                   </button>
@@ -475,7 +475,7 @@ export default function AuthPage() {
             </div>
           </div>
 
-          <p className="mt-4 text-center text-[10px] uppercase tracking-widest text-zinc-600">
+          <p className="mt-4 text-center text-[10px] uppercase tracking-widest text-white/20">
             AI-powered analysis · Paper trading only · Not financial advice
           </p>
         </div>

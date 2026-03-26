@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
+import { useEffect, useState, type ReactNode } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { useAuth } from '@/providers/auth-provider'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
 
@@ -10,15 +11,37 @@ interface AppShellProps {
   children: ReactNode
 }
 
-const AUTH_ROUTES = ['/auth', '/landing']
+const FULL_SCREEN_ROUTES = ['/auth', '/landing']
+
+function isAnonymousUser(email: string | undefined): boolean {
+  return !email || email.includes('@anon.example.com')
+}
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { isReady, user } = useAuth()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
-  // Auth routes render full-screen without sidebar or header
-  if (AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
+  const isFullScreen = FULL_SCREEN_ROUTES.some((r) => pathname.startsWith(r))
+  const isAnon = isAnonymousUser(user?.email)
+
+  // Redirect anonymous users to landing BEFORE rendering dashboard content
+  useEffect(() => {
+    if (isFullScreen || !isReady) return
+    if (isAnon) {
+      router.replace('/landing')
+    }
+  }, [isReady, isAnon, isFullScreen, router])
+
+  // Full-screen routes (landing, auth) — no sidebar or header
+  if (isFullScreen) {
     return <>{children}</>
+  }
+
+  // Block all dashboard rendering until auth resolves — eliminates the flash
+  if (!isReady || isAnon) {
+    return null
   }
 
   return (

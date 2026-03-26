@@ -1,9 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { useAuth } from '@/providers/auth-provider'
 import { MarketPulseCard } from '@/components/dashboard/market-pulse-card'
 import { ActiveSessionCard } from '@/components/dashboard/active-session-card'
 import { SystemHealthCard } from '@/components/dashboard/system-health-card'
@@ -24,27 +21,7 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 }
 
-function isAnonymousUser(email: string | undefined): boolean {
-  return !email || email.includes('@anon.example.com')
-}
-
 export default function Dashboard() {
-  const { isReady, user } = useAuth()
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!isReady) return
-    // Redirect anonymous/unauthenticated visitors to the landing page
-    if (isAnonymousUser(user?.email)) {
-      router.replace('/landing')
-    }
-  }, [isReady, user, router])
-
-  // Show nothing while auth is loading or during redirect
-  if (!isReady || isAnonymousUser(user?.email)) {
-    return null
-  }
-
   return (
     <motion.div
       variants={containerVariants}
@@ -52,7 +29,6 @@ export default function Dashboard() {
       animate="visible"
       className="space-y-6"
     >
-      {/* Hero Row - 3 Stat Cards */}
       <motion.section
         variants={itemVariants}
         className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
@@ -62,12 +38,10 @@ export default function Dashboard() {
         <SystemHealthCard />
       </motion.section>
 
-      {/* Hot Stocks Grid */}
       <motion.section variants={itemVariants}>
         <HotStocksGrid />
       </motion.section>
 
-      {/* Two Column Split */}
       <motion.section
         variants={itemVariants}
         className="grid gap-6 lg:grid-cols-5"
