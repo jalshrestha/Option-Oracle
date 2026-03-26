@@ -20,6 +20,8 @@ if not os.environ.get("SUPABASE_URL"):
     os.environ["SUPABASE_URL"] = "https://placeholder.supabase.co"
 if not os.environ.get("SUPABASE_SERVICE_KEY"):
     os.environ["SUPABASE_SERVICE_KEY"] = "test-placeholder-key"
+if not os.environ.get("JWT_SECRET_KEY"):
+    os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-for-ci-testing-only-32plus"
 
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock

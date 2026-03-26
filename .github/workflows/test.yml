@@ -30,4 +30,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_TEST_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/options_oracle_test
+          JWT_SECRET_KEY: test-jwt-secret-key-for-ci-testing-only-32plus
           ENV: development

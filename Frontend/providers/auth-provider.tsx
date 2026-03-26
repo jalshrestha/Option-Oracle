@@ -31,13 +31,14 @@ function generateAnonCreds(): AnonCreds {
   const hex = Array.from(crypto.getRandomValues(new Uint8Array(8)))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
-  const pwHex = Array.from(crypto.getRandomValues(new Uint8Array(12)))
+  // Generate a random 24-char hex token used as the anon account credential
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(12)))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
   return {
     username: `user_${hex}`,
     email: `user_${hex}@anon.example.com`,
-    password: `Anon_${pwHex}!`,
+    password: token,
   }
 }
 
