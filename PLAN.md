@@ -147,14 +147,14 @@
 - ~~SPY/QQQ/IWM already appended to hot-stocks symbols list in `main.py` (was already done)~~
 - ~~Add `performance_history` time-series to `GET /api/v1/portfolio/performance` — real cumulative P&L from closed positions grouped by date~~
 - ~~Add `get_closed()` method to `PositionRepository`~~
+- ~~Move DB password to env var in `docker-compose.yml` (was already `${POSTGRES_PASSWORD}` — confirmed)~~
+- ~~Add auth guard to `GET /api/v1/system/config` (was already guarded — confirmed)~~
+- ~~Scrub `str(e)` responses from `main.py`, `chat_router.py`, `system.py` — replaced with generic messages, exc_info logged server-side~~
 
 ### 🔴 Next Up
 
 ### 🟡 Security Hardening
 
-3. **Move DB password to env var** in `docker-compose.yml` (`POSTGRES_PASSWORD=${POSTGRES_PASSWORD}`)
-4. **Add auth guard** to `GET /api/v1/system/config` endpoint
-5. **Scrub `str(e)` responses** from inline endpoints in `main.py`
 6. **Add auth route tests** (`/register`, `/login`, `/refresh` — happy + error paths)
 
 ### 🟢 Future / Nice to Have

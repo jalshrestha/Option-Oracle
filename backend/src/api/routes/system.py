@@ -144,10 +144,9 @@ async def detailed_health_check() -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Health check failed: {e}", exc_info=True)
         return {
             "overall_status": "unhealthy",
-            "error": str(e),
             "timestamp": time.time()
         }
 
