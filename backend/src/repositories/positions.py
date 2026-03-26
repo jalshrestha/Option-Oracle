@@ -70,6 +70,22 @@ class PositionRepository(BaseRepository):
             logger.debug(f"Position {position_id} not found: {e}")
             return None
 
+    async def get_closed(self, session_id: str) -> List[Dict[str, Any]]:
+        """Return all closed positions for a session, ordered by closed_at ASC."""
+        try:
+            result = await self._session.execute(
+                select(Position)
+                .where(
+                    Position.session_id == session_id,
+                    Position.status == "closed",
+                    Position.closed_at.is_not(None),
+                )
+                .order_by(Position.closed_at.asc())
+            )
+            return [_row_to_dict(row) for row in result.scalars().all()]
+        except Exception as e:
+            self._handle_db_error(e, f"get_closed({session_id})")
+
     async def close(self, position_id: str) -> Dict[str, Any]:
         """Mark a position as closed and return the updated record."""
         try:

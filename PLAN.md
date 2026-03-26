@@ -81,7 +81,7 @@
 | `GET /api/v1/options/{symbol}` | 🟡 | Alpaca data; TODO: "replace with real trading API" |
 | `POST /api/v1/chat/message` | ✅ | OpenAI-powered chat |
 | `GET /api/v1/portfolio/summary` | ✅ | Real positions + P&L |
-| `GET /api/v1/portfolio/performance` | 🟡 | Returns totals; `performance_history` list is always `[]` |
+| `GET /api/v1/portfolio/performance` | ✅ | Returns real totals + cumulative daily P&L history from closed positions |
 | `GET /api/v1/education/content` | 🟡 | Falls back to mock data if DB empty |
 | `GET /api/v1/system/health` | ✅ | Real service checks |
 | `GET /api/v1/system/metrics` | 🟡 | Mock CPU/memory stats |
@@ -144,11 +144,11 @@
 - ~~Full frontend/backend audit — confirmed most pages already wired to real APIs~~
 - ~~Enable TypeScript strict build (`ignoreBuildErrors: false` in `next.config.mjs`)~~
 - ~~PLAN.md created with accurate project status~~
+- ~~SPY/QQQ/IWM already appended to hot-stocks symbols list in `main.py` (was already done)~~
+- ~~Add `performance_history` time-series to `GET /api/v1/portfolio/performance` — real cumulative P&L from closed positions grouped by date~~
+- ~~Add `get_closed()` method to `PositionRepository`~~
 
 ### 🔴 Next Up
-
-1. **Add SPY/QQQ/IWM to hot-stocks fallback** (backend `main.py`) — `MarketPulseCard` shows empty without them
-2. **Add `performance_history` time-series** to `GET /api/v1/portfolio/performance` — per-day cumulative P&L from closed positions
 
 ### 🟡 Security Hardening
 
