@@ -463,6 +463,7 @@ export default function ChatPage() {
   const [hasToolProgress, setHasToolProgress] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState<AgentProgressState>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const historyMenuRef = useRef<HTMLDivElement>(null)
   const loadingPhase = progressToPhase(progressEvent)
 
   useEffect(() => {
@@ -482,8 +483,32 @@ export default function ChatPage() {
     refreshThreads()
   }, [refreshThreads])
 
+  useEffect(() => {
+    if (!historyOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!historyMenuRef.current?.contains(event.target as Node)) {
+        setHistoryOpen(false)
+      }
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHistoryOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [historyOpen])
+
   const handleNewChat = () => {
     setActiveThreadId(undefined)
+    setHistoryOpen(false)
     setMessages([])
     setInput('')
   }
@@ -501,6 +526,13 @@ export default function ChatPage() {
         content: message.content,
         data: message.role === 'assistant' ? buildMessageData(message.content, message.metadata) : undefined,
       })))
+    } catch {
+      setHistoryOpen(false)
+      setMessages([{
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: 'I could not open that saved chat. Please refresh and try again.',
+      }])
     } finally {
       setIsLoadingThread(false)
     }
@@ -605,7 +637,7 @@ export default function ChatPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative">
+          <div ref={historyMenuRef}>
             <Button
               variant="ghost"
               size="sm"
@@ -620,7 +652,7 @@ export default function ChatPage() {
                 initial={{ opacity: 0, y: -6, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                className="absolute right-0 top-11 z-50 hidden w-80 overflow-hidden rounded-2xl border border-white/10 bg-[#0b1018] shadow-[0_24px_80px_rgba(0,0,0,0.46)] md:block"
+                className="fixed right-6 top-16 z-50 hidden w-[360px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b1018] shadow-[0_24px_80px_rgba(0,0,0,0.46)] md:block"
               >
                 <div className="flex items-center justify-between border-b border-white/10 px-3 py-3">
                   <div>
