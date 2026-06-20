@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity,
@@ -451,6 +452,7 @@ function buildMessageData(content: string, metadata?: Record<string, any>): Chat
 }
 
 export default function ChatPage() {
+  const router = useRouter()
   const { isReady: sessionReady } = useSession()
   const [messages, setMessages] = useState<Message[]>([])
   const [threads, setThreads] = useState<ChatThreadSummary[]>([])
@@ -511,7 +513,7 @@ export default function ChatPage() {
     setHistoryOpen(false)
     setMessages([])
     setInput('')
-    window.history.replaceState(null, '', '/chat')
+    router.replace('/chat')
   }
 
   const handleOpenThread = useCallback(async (threadId: string) => {
@@ -538,6 +540,11 @@ export default function ChatPage() {
       setIsLoadingThread(false)
     }
   }, [isLoading])
+
+  const openThreadFromHistory = useCallback((threadId: string) => {
+    router.push(`/chat?thread=${encodeURIComponent(threadId)}`)
+    void handleOpenThread(threadId)
+  }, [handleOpenThread, router])
 
   useEffect(() => {
     if (!sessionReady) return
@@ -684,14 +691,16 @@ export default function ChatPage() {
                       </div>
                     ) : (
                       threads.map((thread) => (
-                        <a
-                          href={`/chat?thread=${encodeURIComponent(thread.id)}`}
+                        <button
+                          type="button"
                           key={thread.id}
                           onClick={(event) => {
                             event.stopPropagation()
+                            openThreadFromHistory(thread.id)
                           }}
+                          disabled={isLoadingThread}
                           className={[
-                            'block w-full rounded-xl px-3 py-3 text-left transition-colors',
+                            'block w-full cursor-pointer rounded-xl px-3 py-3 text-left transition-colors disabled:cursor-wait disabled:opacity-70',
                             activeThreadId === thread.id
                               ? 'bg-blue-500/14 text-foreground'
                               : 'text-muted-foreground hover:bg-white/[0.055] hover:text-foreground',
@@ -708,7 +717,7 @@ export default function ChatPage() {
                               )}
                             </div>
                           </div>
-                        </a>
+                        </button>
                       ))
                     )}
                   </div>
