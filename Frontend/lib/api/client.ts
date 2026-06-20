@@ -32,10 +32,12 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
 const ACCESS_TOKEN_KEY = 'oracle_access_token'
 const REFRESH_TOKEN_KEY = 'oracle_refresh_token'
+const SESSION_TOKEN_KEY = 'oracle_session_token'
 
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(ACCESS_TOKEN_KEY)
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+  return token?.startsWith('guest_') ? null : token
 }
 
 export function getRefreshToken(): string | null {
@@ -53,6 +55,21 @@ export function clearTokens(): void {
   if (typeof window === 'undefined') return
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(REFRESH_TOKEN_KEY)
+}
+
+export function getSessionToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(SESSION_TOKEN_KEY)
+}
+
+export function setSessionToken(token: string): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(SESSION_TOKEN_KEY, token)
+}
+
+export function clearSessionToken(): void {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(SESSION_TOKEN_KEY)
 }
 
 let isRefreshing = false
@@ -482,7 +499,7 @@ export async function getRiskMetrics(): Promise<RiskMetrics> {
 export async function createSession(
   riskProfile: RiskProfile = 'moderate'
 ): Promise<SessionResponse> {
-  const existing = getAccessToken()
+  const existing = getSessionToken()
   if (existing) {
     return {
       session_token: existing,
@@ -492,17 +509,25 @@ export async function createSession(
     }
   }
 
-  const guestToken = `guest_${crypto.randomUUID()}`
-  setSessionToken(guestToken)
+  try {
+    const response = await fetch(`${BASE_URL}/api/v1/session/create?risk_profile=${encodeURIComponent(riskProfile)}`, {
+      method: 'POST',
+    })
+    if (response.ok) {
+      const data: SessionResponse = await response.json()
+      setSessionToken(data.session_token)
+      return data
+    }
+  } catch {
+    // Local fallback keeps chat usable during backend restarts.
+  }
+
+  const token = `guest_${crypto.randomUUID()}`
+  setSessionToken(token)
   return {
-    session_token: guestToken,
+    session_token: token,
     risk_profile: riskProfile,
-    expires_in: 3600,
+    expires_in: 86400,
     created_at: Math.floor(Date.now() / 1000),
   }
 }
-
-export const getSessionToken = getAccessToken
-export const setSessionToken = (token: string) =>
-  typeof window !== 'undefined' && localStorage.setItem(ACCESS_TOKEN_KEY, token)
-export const clearSessionToken = clearTokens
