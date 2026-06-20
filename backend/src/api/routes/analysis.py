@@ -2,7 +2,7 @@
 Analysis routes — thin controllers.
 All business logic lives in AnalysisService.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, Path
 

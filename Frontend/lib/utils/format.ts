@@ -32,6 +32,13 @@ export function formatCompact(value: number): string {
 }
 
 /**
+ * Format a number with locale separators.
+ */
+export function formatNumber(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value)
+}
+
+/**
  * Format Greek values with 4 decimal places
  */
 export function formatGreek(value: number): string {

@@ -1,6 +1,6 @@
 # Neural Options Oracle++ Dockerfile
 
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -32,8 +32,13 @@ RUN mkdir -p logs
 # Create non-root user
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app
-USER appuser
 
+FROM base AS test
+USER appuser
+CMD ["python", "-m", "pytest"]
+
+FROM base AS runtime
+USER appuser
 # Expose port
 EXPOSE 8080
 

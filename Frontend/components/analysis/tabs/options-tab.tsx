@@ -1,192 +1,156 @@
-"use client";
+'use client'
 
-import { motion } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, TrendingDown, Target, Zap, Calendar, DollarSign } from "lucide-react";
-import type { AnalysisResult } from "@/lib/api/types";
-import { formatCurrency, formatPercent } from "@/lib/utils/format";
+import { motion } from 'framer-motion'
+import { Calendar, DollarSign, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { formatCurrency } from '@/lib/utils/format'
+import type { AnalysisResponse, StrikeRecommendation } from '@/lib/api/types'
 
 interface OptionsTabProps {
-  analysis: AnalysisResult;
+  analysis: AnalysisResponse
+}
+
+function StrikeRecommendationCard({
+  recommendation,
+  index,
+}: {
+  recommendation: StrikeRecommendation
+  index: number
+}) {
+  const isCall = recommendation.option_type === 'call'
+  const Icon = isCall ? TrendingUp : TrendingDown
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08 }}
+      className="rounded-lg border border-border bg-background/50 p-4"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={isCall ? 'default' : 'destructive'}>
+              {recommendation.option_type.toUpperCase()}
+            </Badge>
+            <span className="font-mono text-xl font-semibold">
+              ${recommendation.strike}
+            </span>
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5" />
+              {recommendation.expiry}
+            </span>
+          </div>
+          <p className="text-sm leading-6 text-muted-foreground">
+            {recommendation.rationale}
+          </p>
+        </div>
+        <div className="rounded-lg bg-muted p-2">
+          <Icon className="h-5 w-5 text-primary" />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg bg-muted/40 p-3">
+          <div className="text-xs text-muted-foreground">Delta</div>
+          <div className="font-mono font-semibold">
+            {recommendation.delta == null ? '-' : recommendation.delta.toFixed(2)}
+          </div>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-3">
+          <div className="text-xs text-muted-foreground">Premium</div>
+          <div className="font-mono font-semibold">
+            {recommendation.premium == null
+              ? '-'
+              : formatCurrency(recommendation.premium)}
+          </div>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-3">
+          <div className="text-xs text-muted-foreground">Risk/Reward</div>
+          <div className="font-mono font-semibold">
+            {recommendation.risk_reward == null
+              ? '-'
+              : `${recommendation.risk_reward.toFixed(1)}x`}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <Button size="sm" className="gap-2">
+          <Zap className="h-4 w-4" />
+          Execute
+        </Button>
+        <Button size="sm" variant="outline">
+          Add To Watchlist
+        </Button>
+      </div>
+    </motion.div>
+  )
 }
 
 export function OptionsTab({ analysis }: OptionsTabProps) {
-  const { options_strategies } = analysis;
+  const recommendations = analysis.strike_recommendations || []
+  const calls = recommendations.filter((item) => item.option_type === 'call').length
+  const puts = recommendations.filter((item) => item.option_type === 'put').length
 
   return (
     <div className="space-y-6">
-      {/* Strategy Recommendations */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur">
+      <Card className="border-border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-accent" />
-            AI-Recommended Strategies
+            <Target className="h-5 w-5 text-primary" />
+            Strike Recommendations
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
-            {options_strategies.recommendations.map((strategy, i) => (
-              <motion.div
-                key={strategy.name}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="rounded-lg border border-border/50 bg-background/50 p-4"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold">{strategy.name}</h4>
-                      <Badge variant={strategy.risk_level === "low" ? "default" : strategy.risk_level === "medium" ? "secondary" : "destructive"}>
-                        {strategy.risk_level} risk
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{strategy.description}</p>
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="flex items-center gap-1">
-                        <Target className="h-4 w-4 text-accent" />
-                        Max Profit: {formatCurrency(strategy.max_profit)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <TrendingDown className="h-4 w-4 text-destructive" />
-                        Max Loss: {formatCurrency(strategy.max_loss)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {strategy.timeframe}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-accent">
-                      {formatPercent(strategy.win_probability)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Win Rate</div>
-                  </div>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
-                    Execute Trade
-                  </Button>
-                  <Button size="sm" variant="outline">
-                    View Details
-                  </Button>
-                </div>
-              </motion.div>
-            ))}
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-muted/40 p-3">
+              <div className="text-xs text-muted-foreground">Total Ideas</div>
+              <div className="font-mono text-2xl font-semibold">{recommendations.length}</div>
+            </div>
+            <div className="rounded-lg bg-muted/40 p-3">
+              <div className="text-xs text-muted-foreground">Calls</div>
+              <div className="font-mono text-2xl font-semibold text-green-500">{calls}</div>
+            </div>
+            <div className="rounded-lg bg-muted/40 p-3">
+              <div className="text-xs text-muted-foreground">Puts</div>
+              <div className="font-mono text-2xl font-semibold text-red-500">{puts}</div>
+            </div>
           </div>
+
+          {recommendations.length > 0 ? (
+            <div className="grid gap-4">
+              {recommendations.map((recommendation, index) => (
+                <StrikeRecommendationCard
+                  key={`${recommendation.option_type}-${recommendation.strike}-${recommendation.expiry}-${index}`}
+                  recommendation={recommendation}
+                  index={index}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border p-6 text-center">
+              <DollarSign className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                No strike recommendations were returned for this analysis.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Options Flow */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur">
+      <Card className="border-border bg-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-accent" />
-            Unusual Options Activity
-          </CardTitle>
+          <CardTitle className="text-base">Execution Notes</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="calls">
-            <TabsList className="mb-4">
-              <TabsTrigger value="calls" className="flex items-center gap-1">
-                <TrendingUp className="h-4 w-4" />
-                Calls
-              </TabsTrigger>
-              <TabsTrigger value="puts" className="flex items-center gap-1">
-                <TrendingDown className="h-4 w-4" />
-                Puts
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="calls">
-              <div className="space-y-2">
-                {options_strategies.unusual_activity
-                  .filter((a) => a.type === "call")
-                  .map((activity, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-lg border border-success/20 bg-success/5 p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Badge variant="outline" className="border-success text-success">
-                          CALL
-                        </Badge>
-                        <span className="font-medium">${activity.strike}</span>
-                        <span className="text-sm text-muted-foreground">{activity.expiry}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <div className="font-semibold">{activity.volume.toLocaleString()}</div>
-                          <div className="text-xs text-muted-foreground">Volume</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-semibold">{activity.open_interest.toLocaleString()}</div>
-                          <div className="text-xs text-muted-foreground">OI</div>
-                        </div>
-                        <Badge className="bg-success/20 text-success">
-                          {activity.volume / activity.open_interest > 1 ? "Sweep" : "Block"}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </TabsContent>
-            <TabsContent value="puts">
-              <div className="space-y-2">
-                {options_strategies.unusual_activity
-                  .filter((a) => a.type === "put")
-                  .map((activity, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Badge variant="outline" className="border-destructive text-destructive">
-                          PUT
-                        </Badge>
-                        <span className="font-medium">${activity.strike}</span>
-                        <span className="text-sm text-muted-foreground">{activity.expiry}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <div className="font-semibold">{activity.volume.toLocaleString()}</div>
-                          <div className="text-xs text-muted-foreground">Volume</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-semibold">{activity.open_interest.toLocaleString()}</div>
-                          <div className="text-xs text-muted-foreground">OI</div>
-                        </div>
-                        <Badge className="bg-destructive/20 text-destructive">
-                          {activity.volume / activity.open_interest > 1 ? "Sweep" : "Block"}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      {/* Greeks Summary */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur">
-        <CardHeader>
-          <CardTitle>Greeks Analysis</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            {Object.entries(options_strategies.greeks_summary).map(([greek, value]) => (
-              <div key={greek} className="rounded-lg border border-border/50 bg-background/50 p-4 text-center">
-                <div className="text-2xl font-bold">{typeof value === "number" ? value.toFixed(4) : value}</div>
-                <div className="text-sm capitalize text-muted-foreground">{greek}</div>
-              </div>
-            ))}
-          </div>
+        <CardContent className="text-sm leading-6 text-muted-foreground">
+          Validate bid/ask spread, open interest, implied volatility, and expiry risk before
+          executing. The backend currently returns recommendation-level strike data, not a full
+          multi-leg strategy payload.
         </CardContent>
       </Card>
     </div>
-  );
+  )
 }

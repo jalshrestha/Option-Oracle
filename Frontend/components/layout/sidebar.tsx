@@ -6,11 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Home,
   Sparkles,
-  BarChart3,
   Briefcase,
   Grid3X3,
-  GraduationCap,
-  Settings,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -21,11 +18,8 @@ import { useLLMProvider } from '@/lib/hooks/use-api'
 const navItems = [
   { href: '/', icon: Home, label: 'Dashboard' },
   { href: '/chat', icon: Sparkles, label: 'Oracle Chat' },
-  { href: '/analyze', icon: BarChart3, label: 'Analyze' },
   { href: '/portfolio', icon: Briefcase, label: 'Portfolio' },
-  { href: '/options', icon: Grid3X3, label: 'Options Chain' },
-  { href: '/education', icon: GraduationCap, label: 'Education' },
-  { href: '/system', icon: Settings, label: 'System' },
+  { href: '/chain', icon: Grid3X3, label: 'Options Chain' },
 ]
 
 interface SidebarProps {
@@ -42,10 +36,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       initial={false}
       animate={{ width: collapsed ? 64 : 240 }}
       transition={{ duration: 0.2, ease: 'easeInOut' }}
-      className="fixed left-0 top-0 z-40 h-screen border-r border-border bg-sidebar flex flex-col"
+      className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-sidebar-border/80 bg-sidebar/92 shadow-[10px_0_40px_rgba(0,0,0,0.08)] backdrop-blur-xl"
     >
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-border px-4">
+      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border/80 px-4">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg brand-gradient">
           <svg
             width="20"
@@ -85,6 +79,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-2">
+        {!collapsed && (
+          <div className="px-3 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Workspace
+          </div>
+        )}
         {navItems.map((item) => {
           const isActive = pathname === item.href || 
             (item.href !== '/' && pathname.startsWith(item.href))
@@ -93,12 +92,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <Link key={item.href} href={item.href}>
               <div
                 className={cn(
-                  'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                  'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    ? 'bg-primary/12 text-primary shadow-sm'
+                    : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground'
                 )}
               >
+                {isActive && (
+                  <span className="absolute left-0 h-5 w-0.5 rounded-full bg-primary" />
+                )}
                 <item.icon
                   className={cn(
                     'h-5 w-5 shrink-0 transition-colors',
@@ -124,14 +126,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </nav>
 
       {/* Footer - LLM Provider */}
-      <div className="border-t border-border p-3">
+      <div className="border-t border-sidebar-border/80 p-3">
         <AnimatePresence>
           {!collapsed ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 rounded-lg bg-accent/50 px-3 py-2"
+              className="flex items-center gap-2 rounded-lg border border-border/70 bg-card/60 px-3 py-2"
             >
               <div className="h-2 w-2 rounded-full bg-green-500" />
               <span className="text-xs font-medium text-muted-foreground">

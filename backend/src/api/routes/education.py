@@ -9,7 +9,6 @@ import time
 from config.logging import get_api_logger
 from src.api.dependencies import get_current_session, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends
 
 logger = get_api_logger()
 router = APIRouter()

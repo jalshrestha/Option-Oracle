@@ -16,8 +16,6 @@ import {
   BarChart3,
   Briefcase,
   Grid3X3,
-  GraduationCap,
-  Settings,
   TrendingUp,
 } from 'lucide-react'
 
@@ -29,8 +27,6 @@ const pages = [
   { label: 'Analyze', icon: BarChart3, href: '/analyze' },
   { label: 'Portfolio', icon: Briefcase, href: '/portfolio' },
   { label: 'Options Chain', icon: Grid3X3, href: '/options' },
-  { label: 'Education', icon: GraduationCap, href: '/education' },
-  { label: 'System', icon: Settings, href: '/system' },
 ]
 
 interface CommandPaletteProps {

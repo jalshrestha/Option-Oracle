@@ -1,7 +1,6 @@
-"""
-Schemas for the paper-trading domain.
-"""
-from typing import Dict, Literal, Optional
+"""Schemas for the paper-trading domain."""
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -62,3 +61,59 @@ class PositionSchema(BaseModel):
     unrealized_pnl: float
     status: Literal["open", "closed"]
     greeks: Optional[Dict[str, float]] = None
+
+
+class AnalyzeBuyRequest(BaseModel):
+    """Request body for creating a trade recommendation."""
+
+    symbol: str
+    user_query: Optional[str] = None
+    risk_profile: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("symbol", mode="before")
+    @classmethod
+    def normalize_symbol(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class RecommendationLeg(BaseModel):
+    """Single recommendation leg."""
+
+    asset_type: Literal["stock", "option"] = "option"
+    action: Literal["buy", "sell"] = "buy"
+    quantity: int = Field(..., ge=1)
+    option_type: Optional[Literal["call", "put"]] = None
+    strike: Optional[float] = Field(default=None, gt=0)
+    expiry: Optional[str] = None
+    estimated_price: float = Field(..., ge=0)
+
+
+class TradeRecommendationResponse(BaseModel):
+    """Persisted trade recommendation snapshot."""
+
+    id: str
+    symbol: str
+    strategy: str
+    action: Literal["buy", "sell"]
+    status: Literal["draft", "confirmed", "executed", "expired", "rejected"]
+    mode: Literal["paper", "live"]
+    legs: List[RecommendationLeg]
+    rationale: str
+    source: str
+    source_analysis_id: Optional[str] = None
+    estimated_cost: float
+    max_loss: float
+    confidence: float
+    risk_score: float
+    expires_at: datetime
+    executed_position_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class ExecuteRecommendationRequest(BaseModel):
+    """Execute a persisted trade recommendation."""
+
+    recommendation_id: str
+    mode: Literal["paper", "live"] = "paper"
+    confirmed: bool = False
+    quantity: Optional[int] = Field(default=None, ge=1)

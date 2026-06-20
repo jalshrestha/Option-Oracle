@@ -3,14 +3,14 @@ Unit tests for src/services/
 All repositories and external dependencies are mocked.
 """
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.services.analysis_service import AnalysisService
 from src.services.trading_service import TradingService
 from src.services.portfolio_service import PortfolioService
-from src.schemas.trading import TradeRequest, OptionDetails
-from src.exceptions import AnalysisTimeoutError, ExternalAPIError, NotFoundError
+from src.schemas.trading import AnalyzeBuyRequest, ExecuteRecommendationRequest, TradeRequest, OptionDetails
+from src.exceptions import AnalysisTimeoutError, ExternalAPIError, NotFoundError, ValidationError
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ class TestAnalysisService:
 # ---------------------------------------------------------------------------
 
 class TestTradingService:
-    def _make_service(self, position_return=None):
+    def _make_service(self, position_return=None, recommendation_return=None):
         position_repo = AsyncMock()
         position_repo.create.return_value = "pos-abc-123"
         position_repo.get_by_id.return_value = position_return or {
@@ -151,11 +151,54 @@ class TestTradingService:
             "status": "closed",
         }
         position_repo.update_pnl.return_value = None
-        return TradingService(position_repo), position_repo
+        recommendation_repo = AsyncMock()
+        recommendation_repo.create.return_value = recommendation_return or self._recommendation_record()
+        recommendation_repo.list_for_symbol.return_value = [recommendation_return or self._recommendation_record()]
+        recommendation_repo.get_by_id.return_value = recommendation_return or self._recommendation_record()
+        recommendation_repo.mark_executed.return_value = {
+            **(recommendation_return or self._recommendation_record()),
+            "status": "executed",
+            "executed_position_id": "pos-abc-123",
+        }
+        return TradingService(position_repo, recommendation_repo), position_repo, recommendation_repo
+
+    @staticmethod
+    def _recommendation_record(**overrides):
+        record = {
+            "id": "rec-abc-123",
+            "symbol": "AAPL",
+            "strategy": "long_call",
+            "action": "buy",
+            "status": "draft",
+            "mode": "paper",
+            "legs": [
+                {
+                    "asset_type": "option",
+                    "action": "buy",
+                    "quantity": 1,
+                    "option_type": "call",
+                    "strike": 100.0,
+                    "expiry": "2026-07-18",
+                    "estimated_price": 2.5,
+                }
+            ],
+            "rationale": "Rule-based recommendation",
+            "source": "rule_based",
+            "source_analysis_id": None,
+            "estimated_cost": 250.0,
+            "max_loss": 250.0,
+            "confidence": 0.5,
+            "risk_score": 0.01,
+            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=30),
+            "executed_position_id": None,
+            "created_at": datetime.now(timezone.utc),
+        }
+        record.update(overrides)
+        return record
 
     @pytest.mark.asyncio
     async def test_execute_trade_returns_trade_response(self):
-        service, _ = self._make_service()
+        service, _, _ = self._make_service()
         req = TradeRequest(symbol="AAPL", action="buy", quantity=1)
         result = await service.execute_trade(req, "session-123")
         assert result.status == "executed"
@@ -163,7 +206,7 @@ class TestTradingService:
 
     @pytest.mark.asyncio
     async def test_execute_trade_with_option_details(self):
-        service, repo = self._make_service()
+        service, repo, _ = self._make_service()
         req = TradeRequest(
             symbol="AAPL",
             action="buy",
@@ -174,24 +217,32 @@ class TestTradingService:
         call_args = repo.create.call_args[0][0]
         assert call_args["option_type"] == "call"
         assert call_args["strike_price"] == 155.0
+        assert "created_at" not in call_args
 
     @pytest.mark.asyncio
     async def test_close_position_returns_position_schema(self):
-        service, _ = self._make_service()
-        result = await service.close_position("pos-abc-123")
+        service, _, _ = self._make_service()
+        result = await service.close_position("pos-abc-123", "session-123")
         assert result.status == "closed"
         assert result.id == "pos-abc-123"
 
     @pytest.mark.asyncio
     async def test_close_position_not_found_raises(self):
-        service, repo = self._make_service()
+        service, repo, _ = self._make_service()
         repo.get_by_id.return_value = None
         with pytest.raises(NotFoundError):
-            await service.close_position("missing-id")
+            await service.close_position("missing-id", "session-123")
+
+    @pytest.mark.asyncio
+    async def test_close_position_filters_by_session(self):
+        service, repo, _ = self._make_service()
+        await service.close_position("pos-abc-123", "session-123")
+        repo.get_by_id.assert_called_once_with("pos-abc-123", session_id="session-123")
+        repo.close.assert_called_once_with("pos-abc-123", session_id="session-123")
 
     @pytest.mark.asyncio
     async def test_refresh_pnl_returns_calculated_value(self):
-        service, repo = self._make_service(
+        service, repo, _ = self._make_service(
             position_return={
                 "id": "p1",
                 "symbol": "AAPL",
@@ -204,16 +255,87 @@ class TestTradingService:
             }
         )
         # current 4.00 - entry 3.00 = 1.00 * qty 2 * multiplier 100 = 200.0
-        pnl = await service.refresh_pnl("p1", current_price=4.00)
+        pnl = await service.refresh_pnl("p1", "session-123", current_price=4.00)
         assert pnl == pytest.approx(200.0)
-        repo.update_pnl.assert_called_once_with("p1", pytest.approx(200.0))
+        repo.update_pnl.assert_called_once_with(
+            "p1", pytest.approx(200.0), session_id="session-123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_analyze_buy_persists_recommendation(self):
+        service, _, rec_repo = self._make_service()
+        result = await service.analyze_buy(
+            AnalyzeBuyRequest(symbol="aapl", risk_profile={"account_balance": 100000}),
+            "session-123",
+        )
+        assert result.symbol == "AAPL"
+        assert result.status == "draft"
+        rec_repo.create.assert_called_once()
+        saved = rec_repo.create.call_args[0][0]
+        assert saved["session_id"] == "session-123"
+        assert saved["symbol"] == "AAPL"
+
+    @pytest.mark.asyncio
+    async def test_list_buy_recommendations_filters_by_session(self):
+        service, _, rec_repo = self._make_service()
+        result = await service.list_buy_recommendations("AAPL", "session-123")
+        assert len(result) == 1
+        rec_repo.list_for_symbol.assert_called_once_with("session-123", "AAPL")
+
+    @pytest.mark.asyncio
+    async def test_execute_recommendation_requires_confirmation(self):
+        service, _, _ = self._make_service()
+        with pytest.raises(ValidationError):
+            await service.execute_recommendation(
+                ExecuteRecommendationRequest(recommendation_id="rec-abc-123", confirmed=False),
+                "session-123",
+            )
+
+    @pytest.mark.asyncio
+    async def test_execute_recommendation_live_mode_fails_closed(self):
+        service, _, _ = self._make_service()
+        with pytest.raises(ValidationError):
+            await service.execute_recommendation(
+                ExecuteRecommendationRequest(
+                    recommendation_id="rec-abc-123",
+                    mode="live",
+                    confirmed=True,
+                ),
+                "session-123",
+            )
+
+    @pytest.mark.asyncio
+    async def test_execute_recommendation_rejects_expired(self):
+        service, _, _ = self._make_service(
+            recommendation_return=self._recommendation_record(
+                expires_at=datetime.now(timezone.utc) - timedelta(minutes=1)
+            )
+        )
+        with pytest.raises(ValidationError):
+            await service.execute_recommendation(
+                ExecuteRecommendationRequest(recommendation_id="rec-abc-123", confirmed=True),
+                "session-123",
+            )
+
+    @pytest.mark.asyncio
+    async def test_execute_recommendation_creates_position_and_marks_executed(self):
+        service, position_repo, rec_repo = self._make_service()
+        result = await service.execute_recommendation(
+            ExecuteRecommendationRequest(recommendation_id="rec-abc-123", confirmed=True),
+            "session-123",
+        )
+        assert result.status == "executed"
+        position_repo.create.assert_called_once()
+        rec_repo.mark_executed.assert_called_once_with(
+            "rec-abc-123", "session-123", "pos-abc-123"
+        )
 
     @pytest.mark.asyncio
     async def test_refresh_pnl_not_found_raises(self):
-        service, repo = self._make_service()
+        service, repo, _ = self._make_service()
         repo.get_by_id.return_value = None
         with pytest.raises(NotFoundError):
-            await service.refresh_pnl("missing", 100.0)
+            await service.refresh_pnl("missing", "session-123", 100.0)
 
 
 # ---------------------------------------------------------------------------

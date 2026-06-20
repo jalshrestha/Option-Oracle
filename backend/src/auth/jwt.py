@@ -1,7 +1,6 @@
 """
 JWT utilities — token creation and decoding.
 """
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException

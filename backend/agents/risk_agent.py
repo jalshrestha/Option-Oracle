@@ -156,8 +156,11 @@ OUTPUT FORMAT (JSON):
         try:
             logger.info(f"Generating strike recommendations for {signal.get('direction', 'UNKNOWN')}")
             
-            # Mock current market data
-            mock_data = self._get_mock_options_data(signal.get('symbol', 'UNKNOWN'))
+            # Lightweight synthetic chain for risk sizing when live chain data is unavailable.
+            mock_data = self._get_mock_options_data(
+                signal.get('symbol', 'UNKNOWN'),
+                signal.get('current_price'),
+            )
             risk_level = user_risk_profile.get('risk_level', 'moderate')
             
             messages = [
@@ -199,6 +202,9 @@ Recommend 3-5 appropriate strikes with full risk analysis.
             
             # Validate recommendations
             recommendations = self._validate_strike_recommendations(recommendations)
+            if not recommendations:
+                logger.warning("No valid strike recommendations returned; using price-anchored fallback")
+                return self._get_fallback_strikes(signal, user_risk_profile)
             
             logger.info(f"Generated {len(recommendations)} strike recommendations")
             return recommendations
@@ -230,6 +236,47 @@ Recommend 3-5 appropriate strikes with full risk analysis.
             )
         
         return "\n".join(formatted)
+
+    def _get_mock_options_data(self, symbol: str, current_price: Any = None) -> Dict[str, Any]:
+        """Build a price-anchored synthetic options chain for risk prompts."""
+        try:
+            price = float(current_price or 0)
+        except (TypeError, ValueError):
+            price = 0.0
+
+        if price <= 0:
+            logger.warning(f"No current price for {symbol}; using neutral $100 fallback for risk sizing")
+            price = 100.0
+
+        step = 5 if price >= 50 else 1
+        center = round(price / step) * step
+        strikes = [max(step, center + step * offset) for offset in range(-3, 4)]
+        options_chain = []
+        for strike in strikes:
+            moneyness = abs(strike - price) / price
+            premium = max(0.5, price * (0.025 + moneyness * 0.45))
+            delta_magnitude = max(0.15, min(0.75, 0.55 - moneyness))
+            options_chain.append({
+                'strike': float(strike),
+                'type': 'call',
+                'premium': premium,
+                'delta': delta_magnitude,
+                'iv': 0.35,
+            })
+            options_chain.append({
+                'strike': float(strike),
+                'type': 'put',
+                'premium': premium,
+                'delta': -delta_magnitude,
+                'iv': 0.35,
+            })
+
+        return {
+            'current_price': price,
+            'iv_rank': 50.0,
+            'days_to_earnings': 30,
+            'options_chain': options_chain,
+        }
     
     def _validate_strike_recommendations(self, recommendations: List[Dict]) -> List[Dict]:
         """Validate strike recommendations"""
@@ -267,6 +314,7 @@ Recommend 3-5 appropriate strikes with full risk analysis.
         
         direction = signal.get('direction', 'HOLD')
         risk_level = user_profile.get('risk_level', 'moderate')
+        output_risk_level = 'medium' if risk_level == 'moderate' else risk_level
         
         # Simple fallback based on direction
         if direction in ['BUY', 'STRONG_BUY']:
@@ -279,16 +327,30 @@ Recommend 3-5 appropriate strikes with full risk analysis.
             option_type = 'call'
             delta_range = (0.35, 0.55)
         
+        try:
+            current_price = float(signal.get('current_price') or 0)
+        except (TypeError, ValueError):
+            current_price = 0.0
+        if current_price <= 0:
+            current_price = 100.0
+
+        if option_type == 'call':
+            strike = current_price * 1.02
+        elif option_type == 'put':
+            strike = current_price * 0.98
+        else:
+            strike = current_price
+
         return [
             {
-                'strike': 150.0,
+                'strike': round(strike, 2),
                 'option_type': option_type,
                 'expiration': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
                 'delta': (delta_range[0] + delta_range[1]) / 2,
                 'probability_profit': 0.5,
                 'max_loss': 500.0,
                 'max_gain': 1000.0,
-                'risk_level': risk_level,
+                'risk_level': output_risk_level,
                 'premium': 5.0,
                 'contracts': 1,
                 'note': 'Fallback recommendation'

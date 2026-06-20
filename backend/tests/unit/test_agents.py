@@ -28,7 +28,7 @@ def _make_openai_client(json_payload: dict) -> MagicMock:
 
     client = MagicMock()
     client.chat.completions.create.return_value = completion
-    client.api_key = "sk-test"
+    client.api_key = "test-openai-api-key"
     return client
 
 
@@ -36,7 +36,7 @@ def _make_failing_client() -> MagicMock:
     """Return a mock OpenAI client whose completions.create always raises."""
     client = MagicMock()
     client.chat.completions.create.side_effect = RuntimeError("OpenAI down")
-    client.api_key = "sk-test"
+    client.api_key = "test-openai-api-key"
     return client
 
 

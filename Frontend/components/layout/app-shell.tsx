@@ -20,6 +20,7 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const isFullScreen = FULL_SCREEN_ROUTES.some((r) => pathname.startsWith(r))
+  const isChatRoute = pathname.startsWith('/chat')
 
   // Redirect unauthenticated (no user at all) to landing after auth resolves
   useEffect(() => {
@@ -51,12 +52,13 @@ export function AppShell({ children }: AppShellProps) {
         transition={{ duration: 0.2, ease: 'easeInOut' }}
         className="flex min-h-screen flex-col"
       >
-        <Header />
-        <main className="flex-1 p-6">
+        {!isChatRoute && <Header />}
+        <main className={isChatRoute ? 'flex-1 p-0' : 'flex-1 p-4 lg:p-5'}>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
+            className={isChatRoute ? 'min-h-screen' : 'min-h-[calc(100vh-5.5rem)]'}
           >
             {children}
           </motion.div>

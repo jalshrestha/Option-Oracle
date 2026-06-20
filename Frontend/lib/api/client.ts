@@ -3,21 +3,22 @@
 import type {
   AnalysisResponse,
   ChatResponse,
-  EducationContent,
-  ExplainResponse,
-  GlossaryTerm,
+  ChatProgressEvent,
   HotStock,
-  LearningPath,
   LLMProvider,
   OptionsChain,
   PortfolioSummaryResponse,
   PositionSchema,
-  Quiz,
   RiskProfile,
+  SessionResponse,
   SystemHealth,
   SystemMetrics,
   TechnicalResponse,
   TradeRequest,
+  TradeResponse,
+  AnalyzeBuyRequest,
+  TradeRecommendationResponse,
+  ExecuteRecommendationRequest,
   Greeks,
   RiskMetrics,
   TokenResponse,
@@ -272,6 +273,13 @@ export async function getHotStocks(): Promise<HotStock[]> {
   const res = await apiRequest<{ stocks: any[] }>('/api/v1/stocks/hot-stocks')
   return (res.stocks || []).map((s: any) => ({
     ...s,
+    price: Number(s.price) || 0,
+    change: Number(s.change) || 0,
+    changePercent: Number(s.changePercent) || 0,
+    volume: Number(s.volume) || 0,
+    aiScore: Number(s.aiScore) || 0,
+    signals: Array.isArray(s.signals) ? s.signals : [],
+    trending: Boolean(s.trending),
     sparklineData: Array.isArray(s.sparklineData)
       ? s.sparklineData.map((p: any) => (typeof p === 'object' ? p.value : p))
       : [],
@@ -300,6 +308,55 @@ export async function sendChat(
   })
 }
 
+export async function streamChat(
+  message: string,
+  onEvent: (event: ChatProgressEvent) => void,
+  selectedStock?: string
+): Promise<ChatResponse> {
+  const response = await fetch(`${BASE_URL}/api/v1/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+    },
+    body: JSON.stringify({ message, selectedStock }),
+  })
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Chat stream failed with ${response.status}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalResponse: ChatResponse | null = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const chunks = buffer.split('\n\n')
+    buffer = chunks.pop() || ''
+
+    for (const chunk of chunks) {
+      const line = chunk.split('\n').find((entry) => entry.startsWith('data: '))
+      if (!line) continue
+      const event = JSON.parse(line.slice(6)) as ChatProgressEvent
+      onEvent(event)
+      if ((event.event === 'final' || event.event === 'error') && event.data) {
+        finalResponse = event.data
+      }
+    }
+  }
+
+  if (!finalResponse) {
+    throw new Error('Chat stream ended without a final response')
+  }
+
+  return finalResponse
+}
+
 export async function sendTradeChat(
   message: string,
   symbol: string
@@ -325,7 +382,7 @@ export async function executeOptions(payload: {
   strike: number
   expiry: string
   quantity: number
-  action: 'BUY' | 'SELL'
+  action: 'buy' | 'sell'
 }): Promise<{ success: boolean; position_id: string }> {
   return apiRequest('/api/v1/options/execute', {
     method: 'POST',
@@ -336,7 +393,7 @@ export async function executeOptions(payload: {
 // Trading
 export async function executeTrade(
   tradeRequest: TradeRequest
-): Promise<{ success: boolean; position_id: string }> {
+): Promise<TradeResponse> {
   return apiRequest('/api/v1/trading/execute', {
     method: 'POST',
     body: JSON.stringify(tradeRequest),
@@ -345,7 +402,7 @@ export async function executeTrade(
 
 export async function closePosition(
   positionId: string
-): Promise<{ success: boolean; realized_pnl: number }> {
+): Promise<PositionSchema> {
   return apiRequest(`/api/v1/trading/positions/${positionId}/close`, {
     method: 'POST',
   })
@@ -353,6 +410,30 @@ export async function closePosition(
 
 export async function getPositions(): Promise<PositionSchema[]> {
   return apiRequest('/api/v1/trading/positions')
+}
+
+export async function analyzeBuyRecommendation(
+  request: AnalyzeBuyRequest
+): Promise<TradeRecommendationResponse> {
+  return apiRequest('/api/v1/trading/analyze-buy', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+export async function getBuyRecommendations(
+  symbol: string
+): Promise<TradeRecommendationResponse[]> {
+  return apiRequest(`/api/v1/trading/buy-recommendations/${symbol}`)
+}
+
+export async function executeRecommendation(
+  request: ExecuteRecommendationRequest
+): Promise<TradeResponse> {
+  return apiRequest('/api/v1/trading/execute-recommendation', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
 }
 
 // Portfolio
@@ -377,67 +458,30 @@ export async function getRiskMetrics(): Promise<RiskMetrics> {
   return apiRequest('/api/v1/portfolio/risk')
 }
 
-// Education
-export async function getEducationContent(filters?: {
-  difficulty?: string
-  type?: string
-  topic?: string
-}): Promise<EducationContent[]> {
-  const params = new URLSearchParams()
-  if (filters?.difficulty) params.append('difficulty', filters.difficulty)
-  if (filters?.type) params.append('type', filters.type)
-  if (filters?.topic) params.append('topic', filters.topic)
-  const query = params.toString() ? `?${params.toString()}` : ''
-  return apiRequest(`/api/v1/education/content${query}`)
-}
+// Legacy compat — kept so old imports don't break while migrating
+export async function createSession(
+  riskProfile: RiskProfile = 'moderate'
+): Promise<SessionResponse> {
+  const existing = getAccessToken()
+  if (existing) {
+    return {
+      session_token: existing,
+      risk_profile: riskProfile,
+      expires_in: 3600,
+      created_at: Math.floor(Date.now() / 1000),
+    }
+  }
 
-export async function generateQuiz(request: {
-  topic: string
-  difficulty: string
-  count?: number
-}): Promise<Quiz> {
-  return apiRequest('/api/v1/education/quiz', {
-    method: 'POST',
-    body: JSON.stringify({
-      topic: request.topic,
-      difficulty: request.difficulty,
-      question_count: request.count ?? 5,
-    }),
-  })
-}
-
-export async function explainConcept(concept: string): Promise<ExplainResponse> {
-  const res = await apiRequest<any>(
-    `/api/v1/education/explain?concept=${encodeURIComponent(concept)}`
-  )
-  const inner = res.explanation || res
+  const guestToken = `guest_${crypto.randomUUID()}`
+  setSessionToken(guestToken)
   return {
-    simple_explanation: inner.simple_explanation || '',
-    technical_explanation: inner.technical_explanation || '',
-    example: inner.practical_example || inner.example || '',
-    related_concepts: inner.related_concepts || [],
+    session_token: guestToken,
+    risk_profile: riskProfile,
+    expires_in: 3600,
+    created_at: Math.floor(Date.now() / 1000),
   }
 }
 
-export async function getGlossary(
-  search?: string,
-  category?: string
-): Promise<GlossaryTerm[]> {
-  const params = new URLSearchParams()
-  if (search) params.append('search', search)
-  if (category) params.append('category', category)
-  const query = params.toString() ? `?${params.toString()}` : ''
-  const res = await apiRequest<any>(`/api/v1/education/glossary${query}`)
-  const glossaryObj = res.glossary || res
-  return Object.values(glossaryObj) as GlossaryTerm[]
-}
-
-export async function getLearningPath(level?: string): Promise<LearningPath> {
-  const query = level ? `?current_level=${level}` : ''
-  return apiRequest(`/api/v1/education/learning-path${query}`)
-}
-
-// Legacy compat — kept so old imports don't break while migrating
 export const getSessionToken = getAccessToken
 export const setSessionToken = (token: string) =>
   typeof window !== 'undefined' && localStorage.setItem(ACCESS_TOKEN_KEY, token)

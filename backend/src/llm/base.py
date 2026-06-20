@@ -73,7 +73,7 @@ class LLMClient(ABC):
     @property
     @abstractmethod
     def provider(self) -> str:
-        """Return the provider name: 'openai' or 'gemini'."""
+        """Return the provider name: 'openai', 'gemini', or 'deepseek'."""
 
     @property
     @abstractmethod

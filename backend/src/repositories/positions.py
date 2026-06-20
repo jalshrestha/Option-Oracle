@@ -33,12 +33,15 @@ class PositionRepository(BaseRepository):
         except Exception as e:
             self._handle_db_error(e, "create_position")
 
-    async def update_pnl(self, position_id: str, pnl: float) -> None:
+    async def update_pnl(
+        self, position_id: str, pnl: float, session_id: Optional[str] = None
+    ) -> None:
         """Update the unrealized P&L for an open position."""
         try:
-            result = await self._session.execute(
-                select(Position).where(Position.id == uuid.UUID(position_id))
-            )
+            stmt = select(Position).where(Position.id == uuid.UUID(position_id))
+            if session_id is not None:
+                stmt = stmt.where(Position.session_id == session_id)
+            result = await self._session.execute(stmt)
             pos = result.scalar_one_or_none()
             if pos:
                 pos.unrealized_pnl = pnl
@@ -58,12 +61,15 @@ class PositionRepository(BaseRepository):
         except Exception as e:
             self._handle_db_error(e, f"get_open({session_id})")
 
-    async def get_by_id(self, position_id: str) -> Optional[Dict[str, Any]]:
+    async def get_by_id(
+        self, position_id: str, session_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """Return a single position by ID, or None."""
         try:
-            result = await self._session.execute(
-                select(Position).where(Position.id == uuid.UUID(position_id))
-            )
+            stmt = select(Position).where(Position.id == uuid.UUID(position_id))
+            if session_id is not None:
+                stmt = stmt.where(Position.session_id == session_id)
+            result = await self._session.execute(stmt)
             row = result.scalar_one_or_none()
             return _row_to_dict(row) if row else None
         except Exception as e:
@@ -86,18 +92,20 @@ class PositionRepository(BaseRepository):
         except Exception as e:
             self._handle_db_error(e, f"get_closed({session_id})")
 
-    async def close(self, position_id: str) -> Dict[str, Any]:
+    async def close(self, position_id: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Mark a position as closed and return the updated record."""
         try:
-            result = await self._session.execute(
-                select(Position).where(Position.id == uuid.UUID(position_id))
-            )
+            stmt = select(Position).where(Position.id == uuid.UUID(position_id))
+            if session_id is not None:
+                stmt = stmt.where(Position.session_id == session_id)
+            result = await self._session.execute(stmt)
             pos = result.scalar_one_or_none()
             if not pos:
                 raise NotFoundError(f"Position {position_id} not found")
             pos.status = "closed"
             pos.closed_at = datetime.now(timezone.utc)
             await self._session.flush()
+            await self._session.refresh(pos)
             return _row_to_dict(pos)
         except NotFoundError:
             raise

@@ -4,7 +4,7 @@ Using stock-indicators library for accurate calculations
 """
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime
 try:
     from stock_indicators import indicators

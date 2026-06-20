@@ -2,12 +2,10 @@
 Multi-Options Buy Agent
 Analyzes hot stocks and creates optimized options portfolio within budget
 """
-import asyncio
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from datetime import datetime
 from src.agents.buy_agent import OptionsBuyAgent
-from config.settings import settings
 from config.logging import get_agents_logger
 from src.llm.factory import create_llm_client
 
@@ -204,8 +202,6 @@ class MultiOptionsBuyAgent:
             # Fallback: Simple diversified approach
             recommended = []
             budget_used = 0
-            budget_per_position = total_budget / min(3, len(opportunities))
-            
             for opp in opportunities[:3]:  # Take top 3
                 best_option = opp.get('best_option', {})
                 cost = best_option.get('cost', 0)

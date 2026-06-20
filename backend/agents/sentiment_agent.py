@@ -3,31 +3,33 @@ Sentiment Analysis Agent
 OpenAI Agents SDK v0.3.0 Implementation - REAL DATA ONLY
 """
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from .base_agent import BaseAgent
 from config.logging import get_agents_logger
 import asyncio
 import json
 import re
+import requests
+import yfinance as yf
 
 logger = get_agents_logger()
 
 
 class SentimentAnalysisAgent(BaseAgent):
-    """AI agent specializing in market sentiment analysis using real web search data"""
+    """AI agent specializing in market sentiment analysis using sourced public data."""
     
     def __init__(self, client):
         super().__init__(client, "Sentiment Analysis")
         
     def _get_system_instructions(self) -> str:
         return """
-You are a market sentiment analyst for the Neural Options Oracle++ system using REAL web search data.
+You are a market sentiment analyst for the Neural Options Oracle++ system.
 
 Your responsibilities:
-1. Search for real-time news sentiment using web search
-2. Analyze StockTwits sentiment from live web data
-3. Process market psychology indicators
-4. Provide sentiment-based trading insights
+1. Analyze the provided sourced news and social sentiment data
+2. Clearly separate StockTwits/social sentiment from news sentiment
+3. Process market psychology indicators from provided market proxies
+4. Provide sentiment-based trading insights without inventing missing data
 
 Weight in system: 10% of final decision
 
@@ -123,7 +125,7 @@ OUTPUT FORMAT (JSON):
         }
     
     async def analyze(self, symbol: str, **kwargs) -> Dict[str, Any]:
-        """Analyze market sentiment for the symbol using real web search data"""
+        """Analyze market sentiment for the symbol using sourced public data."""
         
         try:
             logger.info(f"Starting REAL sentiment analysis for {symbol}")
@@ -141,7 +143,7 @@ OUTPUT FORMAT (JSON):
             # Analyze with GPT
             analysis = await self._analyze_sentiment_with_gpt(sentiment_data, symbol, current_date)
             
-            # Validate analysis
+            analysis["_raw_sentiment_data"] = sentiment_data
             analysis = self._validate_sentiment_analysis(analysis, symbol)
             
             logger.info(f"REAL sentiment analysis completed for {symbol}")
@@ -152,9 +154,8 @@ OUTPUT FORMAT (JSON):
             return self._get_fallback_sentiment(symbol)
     
     async def _collect_real_sentiment_data(self, symbol: str, current_date: str) -> Dict[str, Any]:
-        """Collect real sentiment data from web search"""
+        """Collect sentiment data from concrete public sources."""
         try:
-            # Run multiple web searches in parallel
             tasks = [
                 self._search_news_sentiment(symbol, current_date),
                 self._search_stocktwits_sentiment(symbol, current_date),
@@ -183,153 +184,232 @@ OUTPUT FORMAT (JSON):
             }
     
     async def _search_news_sentiment(self, symbol: str, current_date: str) -> Dict[str, Any]:
-        """Search for real-time news sentiment"""
+        """Fetch recent Yahoo Finance news via yfinance and score headline sentiment."""
         try:
-            prompt = f"""
-            Please search the web for the latest news about {symbol} on {current_date}.
-            
-            Search for:
-            1. Latest financial news headlines about {symbol}
-            2. Analyst reports and upgrades/downgrades
-            3. Earnings announcements or guidance
-            4. Market-moving news and events
-            
-            Analyze the sentiment of these news items and return:
-            - Overall news sentiment score (-1 to 1)
-            - Number of articles found
-            - Key positive and negative factors
-            - Analyst sentiment (upgrades/downgrades)
-            
-            Return in JSON format:
-            {{
-                "sentiment_score": float,
-                "article_count": int,
-                "positive_factors": ["factor1", "factor2"],
-                "negative_factors": ["factor1", "factor2"],
-                "analyst_sentiment": "positive|negative|neutral|mixed",
-                "key_headlines": ["headline1", "headline2", "headline3"]
-            }}
-            """
-            
-            content = await self.client.complete(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a financial news analyst. Use web search to find real-time news and analyze sentiment. Always return valid JSON data."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=1000,
-                temperature=0.1,
-                json_mode=True,
-            )
-            return self._parse_json_response(content)
+            news_items = await asyncio.to_thread(lambda: yf.Ticker(symbol).news or [])
+            parsed_items = []
+            scores = []
+            for item in news_items[:10]:
+                content = item.get("content", item)
+                title = content.get("title", "")
+                summary = content.get("summary", "") or content.get("description", "")
+                text = f"{title}. {summary}".strip()
+                score = self._score_text_sentiment(text)
+                scores.append(score)
+                parsed_items.append({
+                    "title": title,
+                    "summary": summary[:240],
+                    "provider": (content.get("provider") or {}).get("displayName"),
+                    "published_at": content.get("pubDate") or content.get("displayTime"),
+                    "url": (
+                        (content.get("canonicalUrl") or {}).get("url")
+                        or (content.get("clickThroughUrl") or {}).get("url")
+                    ),
+                    "sentiment_score": score,
+                })
+
+            score = sum(scores) / len(scores) if scores else 0.0
+            return {
+                "sentiment_score": score,
+                "article_count": len(parsed_items),
+                "positive_factors": self._extract_keyword_hits(parsed_items, positive=True),
+                "negative_factors": self._extract_keyword_hits(parsed_items, positive=False),
+                "analyst_sentiment": self._label_sentiment(score),
+                "key_headlines": [item["title"] for item in parsed_items[:5] if item["title"]],
+                "items": parsed_items,
+                "source": "yfinance_news",
+                "is_fallback": False,
+            }
             
         except Exception as e:
             logger.error(f"Error searching news sentiment for {symbol}: {e}")
-            return {}
+            return {"source": "yfinance_news", "is_fallback": True, "error": str(e)}
     
     async def _search_stocktwits_sentiment(self, symbol: str, current_date: str) -> Dict[str, Any]:
-        """Search for StockTwits sentiment"""
+        """Fetch recent public StockTwits symbol stream and score labeled messages."""
         try:
-            prompt = f"""
-            Please search the web for StockTwits sentiment about {symbol} on {current_date}.
-            
-            Specifically visit: https://stocktwits.com/sentiment/most-active
-            
-            Extract:
-            1. Current sentiment score for {symbol}
-            2. Number of mentions and messages
-            3. Bullish vs bearish percentage
-            4. Trending status
-            5. Sample messages and sentiment
-            
-            Return in JSON format:
-            {{
-                "sentiment_score": float,
-                "message_count": int,
-                "bullish_percentage": float,
-                "bearish_percentage": float,
-                "trending": boolean,
-                "sample_messages": ["message1", "message2", "message3"]
-            }}
-            """
-            
-            content = await self.client.complete(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a social media sentiment analyst. Use web search to find real-time StockTwits sentiment data. Always return valid JSON data."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=800,
-                temperature=0.1,
-                json_mode=True,
-            )
-            return self._parse_json_response(content)
+            url = f"https://api.stocktwits.com/api/2/streams/symbol/{symbol.upper()}.json"
+            def fetch_stocktwits():
+                response = requests.get(
+                    url,
+                    params={"limit": 30},
+                    headers={"User-Agent": "OptionOracle/1.0"},
+                    timeout=8,
+                )
+                response.raise_for_status()
+                return response.json()
+
+            data = await asyncio.to_thread(fetch_stocktwits)
+            messages = data.get("messages", [])
+            parsed_messages = []
+            bullish = 0
+            bearish = 0
+            unlabeled_scores = []
+
+            for message in messages:
+                body = self._clean_text(message.get("body", ""))
+                sentiment = (message.get("entities") or {}).get("sentiment") or {}
+                label = str(sentiment.get("basic", "")).lower()
+                if label == "bullish":
+                    bullish += 1
+                    score = 1.0
+                elif label == "bearish":
+                    bearish += 1
+                    score = -1.0
+                else:
+                    score = self._score_text_sentiment(body)
+                    unlabeled_scores.append(score)
+                parsed_messages.append({
+                    "body": body[:240],
+                    "sentiment": label or "unlabeled",
+                    "created_at": message.get("created_at"),
+                    "score": score,
+                })
+
+            labeled_count = bullish + bearish
+            if labeled_count:
+                score = (bullish - bearish) / labeled_count
+            elif unlabeled_scores:
+                score = sum(unlabeled_scores) / len(unlabeled_scores)
+            else:
+                score = 0.0
+
+            total = len(messages) or 1
+            return {
+                "sentiment_score": score,
+                "message_count": len(messages),
+                "bullish_percentage": bullish / total * 100,
+                "bearish_percentage": bearish / total * 100,
+                "trending": len(messages) >= 20,
+                "sample_messages": [item["body"] for item in parsed_messages[:5]],
+                "messages": parsed_messages[:10],
+                "source": "stocktwits_public_stream",
+                "is_fallback": False,
+            }
             
         except Exception as e:
             logger.error(f"Error searching StockTwits sentiment for {symbol}: {e}")
-            return {}
+            return {"source": "stocktwits_public_stream", "is_fallback": True, "error": str(e)}
     
     async def _search_market_psychology(self, symbol: str, current_date: str) -> Dict[str, Any]:
-        """Search for market psychology indicators"""
+        """Collect market psychology proxy data without pretending to browse."""
         try:
-            prompt = f"""
-            Please search the web for market psychology indicators on {current_date}.
-            
-            Search for:
-            1. VIX (Volatility Index) current level
-            2. Put/Call ratio for {symbol}
-            3. Fear & Greed Index
-            4. Market sentiment indicators
-            5. Institutional flow data
-            
-            Return in JSON format:
-            {{
-                "vix_level": float,
-                "put_call_ratio": float,
-                "fear_greed_index": int,
-                "market_sentiment": "fearful|greedy|neutral",
-                "institutional_flow": "buying|selling|neutral",
-                "volatility_trend": "increasing|decreasing|stable"
-            }}
-            """
-            
-            content = await self.client.complete(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a market psychology analyst. Use web search to find real-time market sentiment indicators. Always return valid JSON data."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=600,
-                temperature=0.1,
-                json_mode=True,
-            )
-            return self._parse_json_response(content)
-            
+            vix = await asyncio.to_thread(lambda: yf.Ticker("^VIX").history(period="5d"))
+            spy = await asyncio.to_thread(lambda: yf.Ticker("SPY").history(period="1mo"))
+            vix_level = float(vix["Close"].iloc[-1]) if not vix.empty else 20.0
+            vix_prev = float(vix["Close"].iloc[-2]) if len(vix) > 1 else vix_level
+            spy_change = 0.0
+            if not spy.empty and len(spy) > 1:
+                spy_change = (float(spy["Close"].iloc[-1]) - float(spy["Close"].iloc[0])) / float(spy["Close"].iloc[0]) * 100
+
+            market_sentiment = "fearful" if vix_level >= 25 else "greedy" if vix_level <= 15 and spy_change > 0 else "neutral"
+            volatility_trend = "increasing" if vix_level > vix_prev else "decreasing" if vix_level < vix_prev else "stable"
+
+            return {
+                "vix_level": vix_level,
+                "put_call_ratio": None,
+                "fear_greed_index": None,
+                "market_sentiment": market_sentiment,
+                "institutional_flow": "unknown",
+                "volatility_trend": volatility_trend,
+                "spy_1m_change_percent": spy_change,
+                "source": "yfinance_vix_spy_proxy",
+                "is_fallback": False,
+            }
         except Exception as e:
-            logger.error(f"Error searching market psychology for {symbol}: {e}")
-            return {}
+            logger.error(f"Error collecting market psychology for {symbol}: {e}")
+            return {
+                "vix_level": 20.0,
+                "put_call_ratio": None,
+                "fear_greed_index": None,
+                "market_sentiment": "neutral",
+                "institutional_flow": "unknown",
+                "volatility_trend": "stable",
+                "source": "fallback",
+                "is_fallback": True,
+                "error": str(e),
+            }
+
+    def _score_text_sentiment(self, text: str) -> float:
+        """Small deterministic financial sentiment score for source text."""
+        text_lower = text.lower()
+        positive_terms = [
+            "beat", "beats", "upgrade", "upgraded", "bullish", "surge", "rally",
+            "growth", "record", "profit", "strong", "positive", "outperform",
+            "raises", "raised", "buy rating", "demand", "delivery beat"
+        ]
+        negative_terms = [
+            "miss", "misses", "downgrade", "downgraded", "bearish", "drop", "falls",
+            "lawsuit", "probe", "recall", "weak", "negative", "underperform",
+            "cuts", "cut rating", "slump", "concern", "risk"
+        ]
+        positive = sum(1 for term in positive_terms if term in text_lower)
+        negative = sum(1 for term in negative_terms if term in text_lower)
+        total = positive + negative
+        if total == 0:
+            return 0.0
+        return max(-1.0, min(1.0, (positive - negative) / total))
+
+    def _extract_keyword_hits(self, items: List[Dict[str, Any]], positive: bool) -> List[str]:
+        terms = (
+            ["beat", "upgrade", "bullish", "growth", "strong", "outperform", "demand"]
+            if positive
+            else ["miss", "downgrade", "bearish", "lawsuit", "recall", "weak", "risk"]
+        )
+        hits = []
+        for item in items:
+            text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+            for term in terms:
+                if term in text and term not in hits:
+                    hits.append(term)
+            if len(hits) >= 5:
+                break
+        return hits
+
+    def _label_sentiment(self, score: float) -> str:
+        if score > 0.2:
+            return "positive"
+        if score < -0.2:
+            return "negative"
+        return "neutral"
+
+    def _clean_text(self, text: str) -> str:
+        text = re.sub(r"<[^>]+>", "", text or "")
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    def _source_quality(self, sentiment_data: Dict[str, Any]) -> Dict[str, Any]:
+        news = sentiment_data.get("news_sentiment", {})
+        stocktwits = sentiment_data.get("stocktwits_sentiment", {})
+        psychology = sentiment_data.get("market_psychology", {})
+        usable_sources = [
+            source for source in [news, stocktwits, psychology]
+            if source and not source.get("is_fallback")
+        ]
+        if len(usable_sources) >= 2:
+            status = "partial" if len(usable_sources) < 3 else "live"
+            confidence_cap = 0.75 if status == "live" else 0.55
+        elif usable_sources:
+            status = "limited"
+            confidence_cap = 0.4
+        else:
+            status = "fallback"
+            confidence_cap = 0.2
+        return {
+            "source_status": status,
+            "usable_source_count": len(usable_sources),
+            "confidence_cap": confidence_cap,
+            "is_fallback": len(usable_sources) == 0,
+            "sources": [source.get("source") for source in usable_sources],
+        }
     
     async def _analyze_sentiment_with_gpt(self, sentiment_data: Dict[str, Any], symbol: str, current_date: str) -> Dict[str, Any]:
         """Analyze collected sentiment data with GPT"""
         try:
             # Prepare comprehensive sentiment analysis prompt
             prompt = f"""
-            Analyze the collected sentiment data for {symbol} on {current_date} and provide a comprehensive sentiment analysis.
+            Analyze the collected sentiment data for {symbol} on {current_date}.
+            Use only the data below. If a field is missing or fallback, say the source is limited and keep confidence low.
             
             NEWS SENTIMENT DATA:
             {json.dumps(sentiment_data.get('news_sentiment', {}), indent=2)}
@@ -340,7 +420,7 @@ OUTPUT FORMAT (JSON):
             MARKET PSYCHOLOGY DATA:
             {json.dumps(sentiment_data.get('market_psychology', {}), indent=2)}
             
-            Based on this real data, provide:
+            Based on this sourced data, provide:
             1. Overall aggregate sentiment score (-1 to 1)
             2. Confidence level (0 to 1)
             3. Sentiment trend analysis
@@ -374,11 +454,15 @@ OUTPUT FORMAT (JSON):
             analysis['confidence'] = 0.5
             
         analysis['aggregate_score'] = max(-1.0, min(1.0, analysis['aggregate_score']))
-        analysis['confidence'] = max(0.0, min(1.0, analysis['confidence']))
+        quality = self._source_quality(analysis.pop("_raw_sentiment_data", {}))
+        analysis['confidence'] = min(max(0.0, min(1.0, analysis['confidence'])), quality["confidence_cap"])
         analysis['timestamp'] = datetime.now().isoformat()
         analysis['symbol'] = symbol
         analysis['agent'] = self.name
         analysis['data_freshness'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        analysis['data_quality'] = quality
+        analysis['source'] = ",".join(quality.get("sources", [])) or "fallback"
+        analysis['is_fallback'] = quality["is_fallback"]
         
         return analysis
     
@@ -386,7 +470,7 @@ OUTPUT FORMAT (JSON):
         """Fallback sentiment analysis when real data unavailable"""
         return {
             'aggregate_score': 0.0,
-            'confidence': 0.3,
+            'confidence': 0.2,
             'sources': {
                 'news_sentiment': {'score': 0.0, 'article_count': 0, 'details': 'Real-time news data unavailable'},
                 'stocktwits_sentiment': {'score': 0.0, 'message_count': 0, 'details': 'StockTwits data unavailable'},
@@ -399,5 +483,14 @@ OUTPUT FORMAT (JSON):
             'timestamp': datetime.now().isoformat(),
             'symbol': symbol,
             'agent': self.name,
-            'data_freshness': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            'data_freshness': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'data_quality': {
+                'source_status': 'fallback',
+                'usable_source_count': 0,
+                'confidence_cap': 0.2,
+                'is_fallback': True,
+                'sources': [],
+            },
+            'source': 'fallback',
+            'is_fallback': True,
         }

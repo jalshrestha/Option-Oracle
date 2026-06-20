@@ -11,7 +11,7 @@ import { OverviewTab } from '@/components/analysis/tabs/overview-tab'
 import { AgentsTab } from '@/components/analysis/tabs/agents-tab'
 import { OptionsTab } from '@/components/analysis/tabs/options-tab'
 import { TechnicalTab } from '@/components/analysis/tabs/technical-tab'
-import { EducationTab } from '@/components/analysis/tabs/education-tab'
+import { TradeWorkflow } from '@/components/trading/trade-workflow'
 import { analyzeStock, getTechnical } from '@/lib/api/client'
 import { formatPrice, formatPercent, getPriceColorClass, formatTimeAgo } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
@@ -142,8 +142,8 @@ export default function AnalyzePage(props: { params: Promise<{ symbol: string }>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="agents">Agents</TabsTrigger>
           <TabsTrigger value="options">Options</TabsTrigger>
+          <TabsTrigger value="trade">Trade</TabsTrigger>
           <TabsTrigger value="technical">Technical</TabsTrigger>
-          <TabsTrigger value="education">Education</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -155,15 +155,15 @@ export default function AnalyzePage(props: { params: Promise<{ symbol: string }>
         </TabsContent>
 
         <TabsContent value="options">
-          <OptionsTab analysis={analysis} symbol={symbol} />
+          <OptionsTab analysis={analysis} />
+        </TabsContent>
+
+        <TabsContent value="trade">
+          <TradeWorkflow symbol={symbol} latestSignal={analysis.signal.direction} />
         </TabsContent>
 
         <TabsContent value="technical">
           <TechnicalTab technical={technical} />
-        </TabsContent>
-
-        <TabsContent value="education">
-          <EducationTab analysis={analysis} />
         </TabsContent>
       </Tabs>
 

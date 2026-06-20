@@ -9,9 +9,6 @@ import {
   getLLMProvider,
   getTechnical,
   getAnalysisHistory,
-  getEducationContent,
-  getLearningPath,
-  getGlossary,
   getRecentSignals,
   getSystemMetrics,
   getPortfolioPerformance,
@@ -24,9 +21,6 @@ import type {
   LLMProvider,
   TechnicalResponse,
   AnalysisResponse,
-  EducationContent,
-  LearningPath,
-  GlossaryTerm,
   RecentSignalItem,
   SystemMetrics,
 } from '@/lib/api/types'
@@ -90,39 +84,6 @@ export function useAnalysisHistory(symbol: string | null) {
       revalidateOnFocus: false,
     }
   )
-}
-
-// Education content
-export function useEducationContent(filters?: {
-  difficulty?: string
-  type?: string
-  topic?: string
-}) {
-  const key = filters
-    ? `education-content-${JSON.stringify(filters)}`
-    : 'education-content'
-  return useSWR<EducationContent[]>(key, () => getEducationContent(filters), {
-    revalidateOnFocus: false,
-  })
-}
-
-// Learning path
-export function useLearningPath(level?: string) {
-  return useSWR<LearningPath>(
-    level ? `learning-path-${level}` : 'learning-path',
-    () => getLearningPath(level),
-    {
-      revalidateOnFocus: false,
-    }
-  )
-}
-
-// Glossary
-export function useGlossary(search?: string, category?: string) {
-  const key = `glossary-${search || ''}-${category || ''}`
-  return useSWR<GlossaryTerm[]>(key, () => getGlossary(search, category), {
-    revalidateOnFocus: false,
-  })
 }
 
 // Recent signals across all symbols - revalidate every 30s

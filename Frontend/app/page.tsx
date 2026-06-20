@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { MarketPulseCard } from '@/components/dashboard/market-pulse-card'
 import { ActiveSessionCard } from '@/components/dashboard/active-session-card'
 import { SystemHealthCard } from '@/components/dashboard/system-health-card'
-import { HotStocksGrid } from '@/components/dashboard/hot-stocks-grid'
+import { MarketDashboard } from '@/components/dashboard/market-dashboard'
 import { RecentSignals } from '@/components/dashboard/recent-signals'
 import { QuickAnalyze } from '@/components/dashboard/quick-analyze'
 
@@ -39,7 +39,7 @@ export default function Dashboard() {
       </motion.section>
 
       <motion.section variants={itemVariants}>
-        <HotStocksGrid />
+        <MarketDashboard />
       </motion.section>
 
       <motion.section

@@ -1,19 +1,97 @@
 """
 Neural Options Oracle++ System API Routes
 """
-from typing import Dict, Any, List
+from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 import time
 import psutil
-import asyncio
 
 from config.database import health_check as db_health_check, AsyncSessionLocal
 from config.logging import get_api_logger
 from config.settings import settings
-from src.api.dependencies import get_current_session
+from src.data.redis_cache import health_check as redis_health_check
+from src.api.dependencies import get_current_session, require_admin_api_token
+from src.ingestion import ingestion_manager
 
 logger = get_api_logger()
 router = APIRouter()
+
+
+def _has_real_secret(value: str | None) -> bool:
+    """Treat empty and obvious placeholder values as unconfigured."""
+    if not value:
+        return False
+    normalized = value.strip().lower()
+    return not any(
+        token in normalized
+        for token in ("placeholder", "changeme", "change-me", "example", "test-key")
+    )
+
+
+def _external_service_health() -> Dict[str, Dict[str, Any]]:
+    """Report external service readiness without making secret-backed calls."""
+    now = time.time()
+    openai_configured = _has_real_secret(settings.openai_api_key)
+    gemini_configured = _has_real_secret(settings.gemini_api_key)
+    deepseek_configured = _has_real_secret(settings.deepseek_api_key)
+    alpaca_configured = (
+        _has_real_secret(settings.alpaca_api_key)
+        and _has_real_secret(settings.alpaca_secret_key)
+    )
+    jigsawstack_configured = _has_real_secret(settings.jigsawstack_api_key)
+
+    return {
+        "openai": {
+            "status": "configured" if openai_configured else "unconfigured",
+            "enabled": settings.llm_provider == "openai",
+            "last_check": now,
+            "message": (
+                "OpenAI credentials are configured"
+                if openai_configured
+                else "OpenAI credentials are missing or placeholder"
+            ),
+        },
+        "gemini": {
+            "status": "configured" if gemini_configured else "unconfigured",
+            "enabled": settings.llm_provider == "gemini",
+            "last_check": now,
+            "message": (
+                "Gemini credentials are configured"
+                if gemini_configured
+                else "Gemini credentials are missing or placeholder"
+            ),
+        },
+        "deepseek": {
+            "status": "configured" if deepseek_configured else "unconfigured",
+            "enabled": settings.llm_provider == "deepseek",
+            "last_check": now,
+            "message": (
+                "DeepSeek credentials are configured"
+                if deepseek_configured
+                else "DeepSeek credentials are missing or placeholder"
+            ),
+        },
+        "alpaca": {
+            "status": "configured" if alpaca_configured else "unconfigured",
+            "enabled": alpaca_configured,
+            "last_check": now,
+            "message": (
+                "Alpaca paper trading credentials are configured"
+                if alpaca_configured
+                else "Alpaca credentials are missing or placeholder; yfinance fallback is used"
+            ),
+        },
+        "jigsawstack": {
+            "status": "configured" if jigsawstack_configured else "unconfigured",
+            "enabled": jigsawstack_configured,
+            "last_check": now,
+            "message": (
+                "JigsawStack credentials are configured"
+                if jigsawstack_configured
+                else "JigsawStack credentials are missing or placeholder"
+            ),
+        },
+    }
 
 
 @router.get("/")
@@ -48,6 +126,7 @@ async def get_system_status() -> Dict[str, Any]:
     try:
         # System health checks
         db_health = await db_health_check()
+        redis_health = await redis_health_check()
         
         # Get system resource usage
         cpu_percent = psutil.cpu_percent(interval=1)
@@ -92,6 +171,8 @@ async def get_system_status() -> Dict[str, Any]:
                 "network": network_stats
             },
             "database": db_health,
+            "redis": redis_health,
+            "ingestion": ingestion_manager.get_status(),
             "application": app_status,
             "timestamp": time.time()
         }
@@ -110,11 +191,14 @@ async def detailed_health_check() -> Dict[str, Any]:
         
         # Database health
         db_health = await db_health_check()
+        redis_health = await redis_health_check()
         health_checks["database"] = {
             "status": db_health["status"],
             "response_time_ms": 50,  # Mock response time
             "connection_pool": "healthy"
         }
+        health_checks["redis"] = redis_health
+        health_checks["ingestion"] = ingestion_manager.health()
         
         # API health
         health_checks["api"] = {
@@ -123,17 +207,16 @@ async def detailed_health_check() -> Dict[str, Any]:
             "active_connections": 5
         }
         
-        # External services health (mock)
-        health_checks["external_services"] = {
-            "openai": {"status": "healthy", "last_check": time.time()},
-            "alpaca": {"status": "healthy", "last_check": time.time()},
-            "jigsawstack": {"status": "healthy", "last_check": time.time()}
-        }
+        # External service readiness. This is intentionally configuration-based:
+        # missing optional keys should not be reported as healthy.
+        health_checks["external_services"] = _external_service_health()
         
         # Overall health
-        all_healthy = all(
-            check.get("status") == "healthy" 
-            for check in [health_checks["database"], health_checks["api"]]
+        all_healthy = (
+            health_checks["database"].get("status") == "healthy"
+            and health_checks["api"].get("status") == "healthy"
+            and health_checks["redis"].get("status") in {"healthy", "disabled"}
+            and health_checks["ingestion"].get("status") in {"disabled", "healthy"}
         )
         
         return {
@@ -149,6 +232,21 @@ async def detailed_health_check() -> Dict[str, Any]:
             "overall_status": "unhealthy",
             "timestamp": time.time()
         }
+
+
+@router.get("/ingestion/status")
+async def get_ingestion_status() -> Dict[str, Any]:
+    """Get optional Kafka/Dask ingestion layer status."""
+    return {
+        "ingestion_layer": ingestion_manager.get_status(),
+        "timestamp": time.time(),
+    }
+
+
+@router.get("/ingestion/health")
+async def get_ingestion_health() -> Dict[str, Any]:
+    """Get optional Kafka/Dask ingestion layer health."""
+    return ingestion_manager.health()
 
 
 @router.get("/analytics")
@@ -247,7 +345,8 @@ async def update_system_config(
     key: str,
     value: Any,
     description: str = None,
-    session: Dict = Depends(get_current_session)
+    session: Dict = Depends(get_current_session),
+    _admin: None = Depends(require_admin_api_token),
 ) -> Dict[str, Any]:
     """Update system configuration"""
     
@@ -397,9 +496,12 @@ async def get_llm_provider() -> Dict[str, Any]:
     if settings.llm_provider == "openai":
         large_model = settings.openai_model_large
         small_model = settings.openai_model_small
-    else:
+    elif settings.llm_provider == "gemini":
         large_model = settings.gemini_model_large
         small_model = settings.gemini_model_small
+    else:
+        large_model = settings.deepseek_model_large
+        small_model = settings.deepseek_model_small
 
     return {
         "provider": settings.llm_provider,
@@ -407,6 +509,7 @@ async def get_llm_provider() -> Dict[str, Any]:
             "large": large_model,
             "small": small_model,
         },
+        "base_url": settings.deepseek_base_url if settings.llm_provider == "deepseek" else None,
         "note": "To switch providers, update LLM_PROVIDER in .env and restart the backend.",
     }
 

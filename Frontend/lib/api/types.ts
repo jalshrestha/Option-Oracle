@@ -5,8 +5,6 @@ export type SignalStrength = 'strong' | 'moderate' | 'weak'
 export type MarketScenario = 'BREAKOUT' | 'TRENDING' | 'RANGE_BOUND' | 'VOLATILE' | 'NEUTRAL'
 export type OptionType = 'call' | 'put'
 export type RiskProfile = 'conservative' | 'moderate' | 'aggressive'
-export type ContentDifficulty = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED'
-export type ContentType = 'lesson' | 'quiz' | 'interactive'
 
 export interface SignalSchema {
   direction: SignalDirection
@@ -133,6 +131,18 @@ export interface ChatResponse {
   timestamp: string | number
 }
 
+export interface ChatProgressEvent {
+  event: 'progress' | 'final' | 'error'
+  stage?: string
+  label?: string
+  detail?: string
+  tool?: string
+  tools?: string[]
+  symbol?: string
+  success?: boolean
+  data?: ChatResponse
+}
+
 export interface TechnicalIndicators {
   sma_5: number
   sma_20: number
@@ -209,72 +219,51 @@ export interface OptionsChain {
   total_put_volume: number
 }
 
-export interface EducationContent {
-  id?: string
-  content_id?: string
-  title: string
-  difficulty: ContentDifficulty
-  type?: ContentType
-  content_type?: string
-  duration?: string
-  estimated_duration_minutes?: number
-  topics?: string[]
-  topic?: string
-  description?: string
-}
+export type ServiceStatus =
+  | 'healthy'
+  | 'degraded'
+  | 'unhealthy'
+  | 'disabled'
+  | 'configured'
+  | 'unconfigured'
+  | string
 
-export interface LearningPath {
-  current_level: string
-  learning_path: { module: string; duration_minutes: number; topics: string[] }[]
-  total_duration_minutes: number
-  estimated_completion_days: number
-  next_milestone: string
-  interests: string[]
-}
-
-export interface GlossaryTerm {
-  term: string
-  category: string
-  definition: string
-  example?: string
-  related_terms: string[]
-}
-
-export interface QuizQuestion {
-  id: string
-  question: string
-  options: string[]
-  correct_index: number
-  explanation: string
-}
-
-export interface Quiz {
-  topic: string
-  questions: QuizQuestion[]
-}
-
-export interface ExplainResponse {
-  simple_explanation: string
-  technical_explanation: string
-  example: string
-  related_concepts: string[]
+export interface ExternalServiceHealth {
+  status: ServiceStatus
+  enabled?: boolean
+  last_check?: number
+  message?: string
 }
 
 export interface SystemHealth {
-  status: 'healthy' | 'degraded' | 'unhealthy'
-  uptime: number
-  response_time: number
-  active_connections: number
-  database: {
-    status: 'healthy' | 'unhealthy'
-    connection_pool: number
-    response_time: number
+  overall_status: 'healthy' | 'degraded' | 'unhealthy' | string
+  components: {
+    api?: {
+      status: ServiceStatus
+      response_time_ms?: number
+      active_connections?: number
+    }
+    database?: {
+      status: ServiceStatus
+      response_time_ms?: number
+      connection_pool?: string
+    }
+    redis?: {
+      status: ServiceStatus
+      enabled?: boolean
+    }
+    ingestion?: {
+      status: ServiceStatus
+    }
+    external_services?: {
+      openai?: ExternalServiceHealth
+      gemini?: ExternalServiceHealth
+      alpaca?: ExternalServiceHealth
+      jigsawstack?: ExternalServiceHealth
+    }
   }
-  external_services: {
-    openai: 'healthy' | 'degraded' | 'unhealthy'
-    alpaca: 'healthy' | 'degraded' | 'unhealthy'
-    jigsawstack: 'healthy' | 'degraded' | 'unhealthy'
-  }
+  timestamp: number
+  version: string
 }
 
 export interface SystemMetrics {
@@ -296,13 +285,66 @@ export interface LLMProvider {
 
 export interface TradeRequest {
   symbol: string
-  action: 'BUY' | 'SELL'
+  action: 'buy' | 'sell'
+  quantity: number
+  order_type: 'market' | 'limit'
+  limit_price?: number
+  option_details?: {
+    option_type: OptionType
+    strike: number
+    expiry: string
+  }
+}
+
+export interface TradeResponse {
+  trade_id: string
+  status: 'executed' | 'failed' | 'simulated'
+  position_id?: string
+  execution_price?: number
+  message: string
+}
+
+export interface AnalyzeBuyRequest {
+  symbol: string
+  user_query?: string
+  risk_profile?: Record<string, unknown>
+}
+
+export interface RecommendationLeg {
+  asset_type: 'stock' | 'option'
+  action: 'buy' | 'sell'
+  quantity: number
   option_type?: OptionType
   strike?: number
   expiry?: string
-  quantity: number
-  order_type: 'MARKET' | 'LIMIT'
-  limit_price?: number
+  estimated_price: number
+}
+
+export interface TradeRecommendationResponse {
+  id: string
+  symbol: string
+  strategy: string
+  action: 'buy' | 'sell'
+  status: 'draft' | 'confirmed' | 'executed' | 'expired' | 'rejected'
+  mode: 'paper' | 'live'
+  legs: RecommendationLeg[]
+  rationale: string
+  source: string
+  source_analysis_id?: string
+  estimated_cost: number
+  max_loss: number
+  confidence: number
+  risk_score: number
+  expires_at: string
+  executed_position_id?: string
+  created_at?: string
+}
+
+export interface ExecuteRecommendationRequest {
+  recommendation_id: string
+  mode: 'paper' | 'live'
+  confirmed: boolean
+  quantity?: number
 }
 
 export interface SessionResponse {

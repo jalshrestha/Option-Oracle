@@ -4,11 +4,10 @@ Analyzes multiple stocks, compares them, and selects the best option based on bu
 """
 import asyncio
 import json
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 from dataclasses import dataclass
 from config.logging import get_agents_logger
-from config.settings import settings
 
 from .base_agent import BaseAgent
 

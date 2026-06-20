@@ -26,7 +26,7 @@ class StockTwitsWebScraperAgent:
         Returns list of trending stocks with symbols and sentiment data
         """
         try:
-            logger.info(f"🔥 Using OpenAI web search to get trending STOCKS from StockTwits...")
+            logger.info("🔥 Using OpenAI web search to get trending STOCKS from StockTwits...")
             
             if not self.openai_client:
                 logger.warning("OpenAI client not available, using fallback stocks")

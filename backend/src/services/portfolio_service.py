@@ -27,6 +27,10 @@ class PortfolioService:
     def __init__(self, position_repo: PositionRepository) -> None:
         self._position_repo = position_repo
 
+    async def get_open_positions(self, session_id: str) -> List[Dict[str, Any]]:
+        """Return open positions for the session."""
+        return await self._position_repo.get_open(session_id)
+
     async def get_summary(self, session_id: str) -> PortfolioSummaryResponse:
         """Return a full portfolio summary for the session."""
         positions = await self._position_repo.get_open(session_id)

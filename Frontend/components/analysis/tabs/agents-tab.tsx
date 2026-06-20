@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Clock,
   Shield,
-  GraduationCap,
   ChevronDown,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,7 +32,6 @@ const agentIcons: Record<string, React.ElementType> = {
   flow: TrendingUp,
   historical: Clock,
   risk: Shield,
-  education: GraduationCap,
 }
 
 const agentColors: Record<string, string> = {
@@ -42,7 +40,6 @@ const agentColors: Record<string, string> = {
   flow: 'text-green-500',
   historical: 'text-amber-500',
   risk: 'text-red-500',
-  education: 'text-purple-500',
 }
 
 function AgentCard({
@@ -156,7 +153,9 @@ function AgentCard({
 }
 
 export function AgentsTab({ analysis }: AgentsTabProps) {
-  const agentEntries = Object.entries(analysis.agent_results)
+  const agentEntries = Object.entries(analysis.agent_results).filter(
+    ([name]) => name !== 'education'
+  )
 
   return (
     <div className="space-y-6">

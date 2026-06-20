@@ -1,16 +1,11 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Clock, GraduationCap, Plus, Play } from 'lucide-react'
+import { Clock, Plus, Play } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { SignalBadge } from '@/components/analysis/signal-badge'
 import { ConfidenceMeter } from '@/components/analysis/confidence-meter'
 import { RadarChart } from '@/components/charts/radar-chart'
@@ -92,7 +87,7 @@ function StrikeCard({
 }
 
 export function OverviewTab({ analysis }: OverviewTabProps) {
-  const { signal, strike_recommendations, agent_weights, educational_content } = analysis
+  const { signal, strike_recommendations, agent_weights } = analysis
 
   // Convert decision_score from -1..1 to 0..100 for display
   const decisionScorePercent = ((signal.decision_score + 1) / 2) * 100
@@ -206,27 +201,6 @@ export function OverviewTab({ analysis }: OverviewTabProps) {
             </div>
           </CardContent>
         </Card>
-
-        {/* Educational Insight */}
-        {educational_content && (
-          <Collapsible>
-            <Card className="border-border">
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer hover:bg-muted/50">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <GraduationCap className="h-4 w-4 text-primary" />
-                    Learn More
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="border-t border-border pt-4">
-                  <p className="text-sm text-muted-foreground">{educational_content}</p>
-                </CardContent>
-              </CollapsibleContent>
-            </Card>
-          </Collapsible>
-        )}
       </div>
     </div>
   )

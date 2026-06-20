@@ -12,7 +12,6 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src.api.main import app
 from src.api.intelligent_orchestrator import IntelligentOrchestrator
 from config.settings import settings
 from config.logging import setup_logging, get_core_logger
@@ -30,20 +29,6 @@ def create_logs_directory():
 
 def check_environment():
     """Check that required environment variables are set for real data sources"""
-    
-    # Core required variables
-    required_env_vars = [
-        "SUPABASE_URL",
-        "SUPABASE_SERVICE_KEY"
-    ]
-    
-    # Optional but recommended for enhanced functionality
-    optional_env_vars = [
-        "OPENAI_API_KEY",  # For web search agents
-        "JIGSAWSTACK_API_KEY",  # For advanced scraping
-        "ALPACA_API_KEY",  # For real trading data
-        "ALPACA_SECRET_KEY"  # For real trading data
-    ]
     
     missing_required = []
     missing_optional = []
