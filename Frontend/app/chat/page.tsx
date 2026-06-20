@@ -641,7 +641,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen min-h-[640px] flex-col overflow-hidden rounded-none border-border/70 bg-[#080b11] text-foreground">
-      <header className="relative z-10 flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-4 md:px-6">
+      <header className="relative z-50 flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-4 md:px-6">
         <div className="flex items-center gap-3">
           <AssistantAvatar />
           <div>
@@ -668,7 +668,7 @@ export default function ChatPage() {
                 initial={{ opacity: 0, y: -6, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                className="fixed right-6 top-16 z-50 hidden w-[360px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b1018] shadow-[0_24px_80px_rgba(0,0,0,0.46)] md:block"
+                className="fixed right-6 top-16 z-[100] hidden w-[360px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b1018] shadow-[0_24px_80px_rgba(0,0,0,0.46)] md:block"
               >
                 <div className="flex items-center justify-between border-b border-white/10 px-3 py-3">
                   <div>
@@ -740,7 +740,7 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <div className="relative z-10 flex min-h-0 flex-1">
+      <div className="relative z-0 flex min-h-0 flex-1">
         <ScrollArea className="min-h-0 flex-1">
           {messages.length === 0 ? (
             <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col items-center justify-center px-4 py-12 text-center">
