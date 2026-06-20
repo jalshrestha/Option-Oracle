@@ -511,9 +511,10 @@ export default function ChatPage() {
     setHistoryOpen(false)
     setMessages([])
     setInput('')
+    window.history.replaceState(null, '', '/chat')
   }
 
-  const handleOpenThread = async (threadId: string) => {
+  const handleOpenThread = useCallback(async (threadId: string) => {
     if (isLoading) return
     setIsLoadingThread(true)
     try {
@@ -536,7 +537,15 @@ export default function ChatPage() {
     } finally {
       setIsLoadingThread(false)
     }
-  }
+  }, [isLoading])
+
+  useEffect(() => {
+    if (!sessionReady) return
+    const threadId = new URLSearchParams(window.location.search).get('thread')
+    if (threadId && threadId !== activeThreadId) {
+      void handleOpenThread(threadId)
+    }
+  }, [activeThreadId, handleOpenThread, sessionReady])
 
   const handleSend = async (text?: string) => {
     const messageText = (text || input).trim()
@@ -675,16 +684,14 @@ export default function ChatPage() {
                       </div>
                     ) : (
                       threads.map((thread) => (
-                        <button
-                          type="button"
+                        <a
+                          href={`/chat?thread=${encodeURIComponent(thread.id)}`}
                           key={thread.id}
                           onClick={(event) => {
                             event.stopPropagation()
-                            void handleOpenThread(thread.id)
                           }}
-                          disabled={isLoadingThread}
                           className={[
-                            'w-full rounded-xl px-3 py-3 text-left transition-colors',
+                            'block w-full rounded-xl px-3 py-3 text-left transition-colors',
                             activeThreadId === thread.id
                               ? 'bg-blue-500/14 text-foreground'
                               : 'text-muted-foreground hover:bg-white/[0.055] hover:text-foreground',
@@ -701,7 +708,7 @@ export default function ChatPage() {
                               )}
                             </div>
                           </div>
-                        </button>
+                        </a>
                       ))
                     )}
                   </div>
