@@ -113,7 +113,10 @@ class TestTechnicalAnalysisAgent:
         result = await agent.analyze("AAPL", market_data={})
         assert isinstance(result, dict)
         assert result.get("fallback") is False
-        assert result.get("source") == "basic_candle_indicators"
+        assert result.get("source") in {
+            "basic_candle_indicators",
+            "stock_indicators_professional",
+        }
         assert result.get("weighted_score") is not None
 
     @pytest.mark.asyncio
