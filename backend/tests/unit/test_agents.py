@@ -4,7 +4,7 @@ No live API calls are made.
 """
 import json
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 # ---------------------------------------------------------------------------
@@ -106,13 +106,15 @@ class TestTechnicalAnalysisAgent:
         assert -1 <= result["weighted_score"] <= 1
 
     @pytest.mark.asyncio
-    async def test_analyze_openai_failure_returns_fallback(self):
+    async def test_analyze_openai_failure_uses_real_candle_analysis_when_available(self):
         from agents.technical_agent import TechnicalAnalysisAgent
 
         agent = TechnicalAnalysisAgent(_make_failing_client())
         result = await agent.analyze("AAPL", market_data={})
         assert isinstance(result, dict)
-        assert result.get("fallback") is True
+        assert result.get("fallback") is False
+        assert result.get("source") == "basic_candle_indicators"
+        assert result.get("weighted_score") is not None
 
     @pytest.mark.asyncio
     async def test_analyze_no_client_returns_fallback(self):
@@ -143,13 +145,15 @@ class TestSentimentAnalysisAgent:
         assert isinstance(result, dict)
 
     @pytest.mark.asyncio
-    async def test_analyze_failure_returns_fallback(self):
+    async def test_analyze_llm_failure_uses_real_sources_when_available(self):
         from agents.sentiment_agent import SentimentAnalysisAgent
 
         agent = SentimentAnalysisAgent(_make_failing_client())
         result = await agent.analyze("AAPL")
         assert isinstance(result, dict)
-        assert result.get("fallback") is True
+        assert result.get("fallback") is False
+        assert result.get("is_fallback") is False
+        assert result.get("data_quality", {}).get("usable_source_count", 0) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -201,13 +205,15 @@ class TestHistoricalPatternAgent:
         assert isinstance(result, dict)
 
     @pytest.mark.asyncio
-    async def test_analyze_failure_returns_fallback(self):
+    async def test_analyze_failure_uses_real_history_when_available(self):
         from agents.history_agent import HistoricalPatternAgent
 
         agent = HistoricalPatternAgent(_make_failing_client())
         result = await agent.analyze("AAPL")
         assert isinstance(result, dict)
-        assert result.get("fallback") is True
+        assert result.get("fallback") is False
+        assert result.get("source") == "yfinance_history"
+        assert result.get("historical_matches") == []
 
 
 # ---------------------------------------------------------------------------

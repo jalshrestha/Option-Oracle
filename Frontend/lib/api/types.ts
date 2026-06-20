@@ -138,6 +138,7 @@ export interface ChatProgressEvent {
   detail?: string
   tool?: string
   tools?: string[]
+  agent?: string
   symbol?: string
   success?: boolean
   data?: ChatResponse

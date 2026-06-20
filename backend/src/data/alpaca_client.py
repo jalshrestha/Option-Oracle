@@ -56,6 +56,7 @@ class AlpacaMarketDataClient:
     
     async def get_current_quote(self, symbol: str) -> Dict[str, Any]:
         """Get current quote for symbol"""
+        symbol = symbol.upper()
         try:
             # Try Alpaca first for price data
             if not self.alpaca_data_client:
@@ -69,7 +70,7 @@ class AlpacaMarketDataClient:
                 # Get all data from yfinance first, then supplement with Alpaca bid/ask if good
                 try:
                     ticker = await self._get_ticker(symbol)
-                    info = await asyncio.to_thread(lambda: ticker.info)
+                    info = await asyncio.to_thread(lambda: ticker.info) or {}
                     volume = int(info.get('volume', 0))
                     yf_price = float(info.get('currentPrice', info.get('regularMarketPrice', 0)))
                     previous_close = float(info.get('previousClose', info.get('regularMarketPreviousClose', yf_price)))
@@ -116,7 +117,7 @@ class AlpacaMarketDataClient:
         # Fallback to yfinance for everything
         try:
             ticker = await self._get_ticker(symbol)
-            info = await asyncio.to_thread(lambda: ticker.info)
+            info = await asyncio.to_thread(lambda: ticker.info) or {}
             
             # Get change data from yfinance
             current_price = float(info.get('currentPrice', info.get('regularMarketPrice', 0)))
@@ -216,6 +217,15 @@ class AlpacaMarketDataClient:
             # Use professional indicators calculator
             from src.indicators.technical_calculator import technical_calculator
             indicators = technical_calculator.calculate_comprehensive_indicators(df, symbol)
+            if (
+                str(indicators.get('source', '')).lower() == 'unavailable'
+                or indicators.get('data_points') == 0
+                or indicators.get('current_price') is None
+            ):
+                logger.warning(
+                    f"Professional indicators unavailable for {symbol}; using basic candle indicators"
+                )
+                return await self._get_basic_indicators(symbol)
             
             logger.info(f"Professional technical indicators calculated for {symbol}: {indicators.get('data_points', 0)} bars")
             return indicators
@@ -235,21 +245,62 @@ class AlpacaMarketDataClient:
             df = await self.get_historical_data(symbol, period="3mo", interval="1d")
             if df.empty:
                 return self._get_fallback_indicators(symbol)
+
+            close = df['Close'] if 'Close' in df.columns else df['close']
+            high = df['High'] if 'High' in df.columns else df['high']
+            low = df['Low'] if 'Low' in df.columns else df['low']
+            volume_series = (
+                df['Volume'] if 'Volume' in df.columns
+                else df['volume'] if 'volume' in df.columns
+                else pd.Series([None] * len(df), index=df.index)
+            )
+            returns = close.pct_change().dropna()
+            delta = close.diff()
+            gains = delta.clip(lower=0).rolling(14).mean()
+            losses = (-delta.clip(upper=0)).rolling(14).mean()
+            rs = gains / losses.replace(0, pd.NA)
+            rsi_series = 100 - (100 / (1 + rs))
+            ema12 = close.ewm(span=12, adjust=False).mean()
+            ema26 = close.ewm(span=26, adjust=False).mean()
+            macd_series = ema12 - ema26
+            macd_signal = macd_series.ewm(span=9, adjust=False).mean()
+            typical_price = (high + low + close) / 3
+            volume_for_vwap = volume_series.fillna(0)
+            vwap = (
+                (typical_price * volume_for_vwap).cumsum() / volume_for_vwap.cumsum().replace(0, pd.NA)
+            ).iloc[-1]
+            current_volume = volume_series.iloc[-1] if pd.notna(volume_series.iloc[-1]) else None
+            avg_volume = volume_series.rolling(20).mean().iloc[-1] if len(volume_series) >= 20 else None
             
             # Basic calculations only
             indicators = {
-                'current_price': float(df['Close'].iloc[-1]),
-                'change_percent': ((float(df['Close'].iloc[-1]) - float(df['Close'].iloc[-2])) / float(df['Close'].iloc[-2])) * 100 if len(df) > 1 else 0.0,
-                'volume': int(df['Volume'].iloc[-1]) if 'Volume' in df.columns else 1000000,
-                'ma20': float(df['Close'].rolling(20).mean().iloc[-1]) if len(df) >= 20 else float(df['Close'].iloc[-1]),
-                'ma50': float(df['Close'].rolling(50).mean().iloc[-1]) if len(df) >= 50 else float(df['Close'].iloc[-1]),
-                'resistance': float(df['High'].rolling(20).max().iloc[-1]) if len(df) >= 20 else float(df['High'].iloc[-1]),
-                'support': float(df['Low'].rolling(20).min().iloc[-1]) if len(df) >= 20 else float(df['Low'].iloc[-1]),
-                'source': 'basic_fallback',
-                'volatility': 25.0,
-                'rsi': 50.0,
-                'macd': 0.0,
-                'vwap': float(df['Close'].iloc[-1])
+                'current_price': float(close.iloc[-1]),
+                'change_percent': ((float(close.iloc[-1]) - float(close.iloc[-2])) / float(close.iloc[-2])) * 100 if len(df) > 1 else 0.0,
+                'volume': int(current_volume) if current_volume is not None else None,
+                'current_volume': int(current_volume) if current_volume is not None else None,
+                'avg_volume': float(avg_volume) if avg_volume is not None and pd.notna(avg_volume) else None,
+                'volume_ratio': float(current_volume / avg_volume) if current_volume and avg_volume and pd.notna(avg_volume) else None,
+                'ma5': float(close.rolling(5).mean().iloc[-1]) if len(df) >= 5 else float(close.iloc[-1]),
+                'ma20': float(close.rolling(20).mean().iloc[-1]) if len(df) >= 20 else float(close.iloc[-1]),
+                'ma50': float(close.rolling(50).mean().iloc[-1]) if len(df) >= 50 else float(close.iloc[-1]),
+                'ma200': float(close.rolling(200).mean().iloc[-1]) if len(df) >= 200 else float(close.iloc[-1]),
+                'resistance': float(high.rolling(20).max().iloc[-1]) if len(df) >= 20 else float(high.iloc[-1]),
+                'support': float(low.rolling(20).min().iloc[-1]) if len(df) >= 20 else float(low.iloc[-1]),
+                'source': 'basic_candle_indicators',
+                'volatility': float(returns.std() * (252 ** 0.5) * 100) if len(returns) > 1 else None,
+                'rsi': float(rsi_series.iloc[-1]) if pd.notna(rsi_series.iloc[-1]) else None,
+                'macd': float(macd_series.iloc[-1]) if pd.notna(macd_series.iloc[-1]) else None,
+                'macd_signal': float(macd_signal.iloc[-1]) if pd.notna(macd_signal.iloc[-1]) else None,
+                'macd_histogram': float(macd_series.iloc[-1] - macd_signal.iloc[-1]) if pd.notna(macd_series.iloc[-1]) and pd.notna(macd_signal.iloc[-1]) else None,
+                'vwap': float(vwap) if pd.notna(vwap) else float(close.iloc[-1]),
+                'data_points': len(df),
+                'data_quality': {
+                    'source_status': 'limited',
+                    'source': 'basic_candle_indicators',
+                    'confidence_cap': 0.55,
+                    'is_fallback': False,
+                    'warnings': ['Professional indicator library unavailable; using basic candle calculations'],
+                },
             }
             
             return indicators
@@ -268,10 +319,28 @@ class AlpacaMarketDataClient:
             expiration_dates = await asyncio.to_thread(lambda: ticker.options)
 
             if not expiration_dates:
-                return {'error': 'No options data available'}
+                return {
+                    'symbol': symbol,
+                    'options_chain': [],
+                    'total_options': 0,
+                    'put_call_ratio': None,
+                    'total_call_volume': 0,
+                    'total_put_volume': 0,
+                    'expirations': [],
+                    'source': 'yfinance_options_unavailable',
+                    'last_updated': datetime.now().isoformat(),
+                    'data_quality': {
+                        'source_status': 'unavailable',
+                        'source': 'yfinance_options',
+                        'is_fallback': True,
+                        'confidence_cap': 0.0,
+                        'warnings': ['No listed options expirations returned by provider'],
+                    },
+                    'error': 'No options data available',
+                }
 
             # Get current stock price (reuse cached info)
-            info = await asyncio.to_thread(lambda: ticker.info)
+            info = await asyncio.to_thread(lambda: ticker.info) or {}
             current_price = float(info.get('currentPrice', 100))
             
             # Process multiple expirations (up to 3)
@@ -344,58 +413,89 @@ class AlpacaMarketDataClient:
             return self._get_fallback_options_data(symbol)
     
     def _get_fallback_quote(self, symbol: str) -> Dict[str, Any]:
-        """Fallback quote when all APIs fail"""
+        """Unavailable quote payload when all APIs fail."""
         return {
             'symbol': symbol,
-            'price': 100.0,  # Default price
-            'bid': 99.5,
-            'ask': 100.5,
-            'volume': 1000000,
+            'price': None,
+            'previous_close': None,
+            'change': None,
+            'change_percent': None,
+            'company_name': symbol,
+            'bid': None,
+            'ask': None,
+            'volume': None,
             'timestamp': datetime.now().isoformat(),
-            'source': 'fallback'
+            'source': 'unavailable',
+            'data_quality': {
+                'source_status': 'unavailable',
+                'source': 'market_data_provider',
+                'is_fallback': True,
+                'confidence_cap': 0.0,
+                'warnings': ['No valid quote returned by Alpaca or yfinance'],
+            },
+            'error': 'Quote unavailable',
         }
     
     def _get_fallback_indicators(self, symbol: str) -> Dict[str, Any]:
-        """Fallback indicators when calculation fails"""
-        base_price = 100.0
-        
+        """Unavailable technical indicator payload when calculation fails."""
         return {
-            'current_price': base_price,
-            'change_percent': 0.0,
-            'ma5': base_price,
-            'ma20': base_price,
-            'ma50': base_price,
-            'ma200': base_price,
-            'rsi': 50.0,
-            'macd': 0.0,
-            'macd_signal': 0.0,
-            'macd_histogram': 0.0,
-            'bb_upper': base_price + 5,
-            'bb_middle': base_price,
-            'bb_lower': base_price - 5,
-            'bb_position': 0.5,
-            'vwap': base_price,
-            'volatility': 25.0,
-            'avg_volume': 1000000,
-            'current_volume': 1000000,
-            'volume_ratio': 1.0,
-            'resistance': base_price + 10,
-            'support': base_price - 10,
-            'source': 'fallback'
+            'symbol': symbol,
+            'current_price': None,
+            'change_percent': None,
+            'ma5': None,
+            'ma20': None,
+            'ma50': None,
+            'ma200': None,
+            'rsi': None,
+            'macd': None,
+            'macd_signal': None,
+            'macd_histogram': None,
+            'bb_upper': None,
+            'bb_middle': None,
+            'bb_lower': None,
+            'bb_position': None,
+            'vwap': None,
+            'volatility': None,
+            'avg_volume': None,
+            'current_volume': None,
+            'volume_ratio': None,
+            'resistance': None,
+            'support': None,
+            'source': 'unavailable',
+            'data_quality': {
+                'source_status': 'unavailable',
+                'source': 'historical_price_provider',
+                'is_fallback': True,
+                'confidence_cap': 0.0,
+                'warnings': ['Historical candles unavailable; technical indicators not calculated'],
+            },
+            'error': 'Technical indicators unavailable',
         }
     
     def _get_fallback_options_data(self, symbol: str) -> Dict[str, Any]:
-        """Fallback options data when APIs fail"""
+        """Unavailable options payload when APIs fail."""
         return {
             'symbol': symbol,
-            'expiration': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
-            'current_price': 100.0,
-            'put_call_ratio': 1.0,
-            'total_call_volume': 1000,
-            'total_put_volume': 1000,
-            'call_count': 20,
-            'put_count': 20,
+            'expiration': None,
+            'current_price': None,
+            'put_call_ratio': None,
+            'total_call_volume': 0,
+            'total_put_volume': 0,
+            'call_count': 0,
+            'put_count': 0,
             'atm_calls': [],
             'atm_puts': [],
-            'source': 'fallback'
+            'options_chain': [],
+            'total_options': 0,
+            'expirations': [],
+            'source': 'unavailable',
+            'last_updated': datetime.now().isoformat(),
+            'data_quality': {
+                'source_status': 'unavailable',
+                'source': 'options_provider',
+                'is_fallback': True,
+                'confidence_cap': 0.0,
+                'warnings': ['Options chain unavailable'],
+            },
+            'error': 'Options data unavailable',
         }

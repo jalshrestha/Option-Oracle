@@ -585,57 +585,49 @@ class TechnicalIndicatorsCalculator:
         return converted
     
     def _get_fallback_indicators(self) -> Dict[str, Any]:
-        """Fallback indicators when calculation fails"""
-        
-        base_price = 150.0
-        
+        """Unavailable indicator payload when calculation fails."""
         return {
-            'current_price': base_price,
-            'change_percent': 0.0,
-            'volume': 1000000,
-            
-            # Moving averages
-            'ma5': base_price,
-            'ma20': base_price, 
-            'ma50': base_price,
-            'ma200': base_price,
-            'vwap': base_price,
-            
-            # Oscillators
-            'rsi': 50.0,
-            'stoch_k': 50.0,
-            'stoch_d': 50.0,
-            'williams_r': -50.0,
-            'cci': 0.0,
-            
-            # Trend indicators
-            'macd': 0.0,
-            'macd_signal': 0.0,
-            'macd_histogram': 0.0,
-            'adx': 20.0,
-            
-            # Volatility
-            'bb_upper': base_price + 5,
-            'bb_middle': base_price,
-            'bb_lower': base_price - 5,
-            'bb_position': 0.5,
-            'atr': 1.0,
-            'volatility': 25.0,
-            
-            # Volume
-            'current_volume': 1000000,
-            'avg_volume': 1000000,
-            'volume_ratio': 1.0,
-            'obv': 0,
-            'mfi': 50,
-            
-            # Support/Resistance
-            'resistance': base_price + 10,
-            'support': base_price - 10,
-            
-            'source': 'fallback',
+            'current_price': None,
+            'change_percent': None,
+            'volume': None,
+            'ma5': None,
+            'ma20': None,
+            'ma50': None,
+            'ma200': None,
+            'vwap': None,
+            'rsi': None,
+            'stoch_k': None,
+            'stoch_d': None,
+            'williams_r': None,
+            'cci': None,
+            'macd': None,
+            'macd_signal': None,
+            'macd_histogram': None,
+            'adx': None,
+            'bb_upper': None,
+            'bb_middle': None,
+            'bb_lower': None,
+            'bb_position': None,
+            'atr': None,
+            'volatility': None,
+            'current_volume': None,
+            'avg_volume': None,
+            'volume_ratio': None,
+            'obv': None,
+            'mfi': None,
+            'resistance': None,
+            'support': None,
+            'source': 'unavailable',
             'timestamp': datetime.now().isoformat(),
-            'data_points': 0
+            'data_points': 0,
+            'data_quality': {
+                'source_status': 'unavailable',
+                'source': 'technical_calculator',
+                'is_fallback': True,
+                'confidence_cap': 0.0,
+                'warnings': ['Technical indicator calculation failed'],
+            },
+            'error': 'Technical indicator calculation failed',
         }
 
 

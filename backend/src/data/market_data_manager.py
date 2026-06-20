@@ -376,35 +376,69 @@ class MarketDataManager:
         }
     
     def _get_fallback_comprehensive_data(self, symbol: str) -> Dict[str, Any]:
-        """Fallback comprehensive data"""
+        """Unavailable comprehensive data payload.
+
+        Keep this explicit so downstream agents never treat provider failures as
+        neutral real market data.
+        """
         
         return {
             'symbol': symbol,
             'timestamp': datetime.now().isoformat(),
             'quote': {
                 'symbol': symbol,
-                'price': 100.0,
-                'source': 'fallback'
+                'price': None,
+                'source': 'unavailable',
+                'data_quality': {
+                    'source_status': 'unavailable',
+                    'source': 'market_data_provider',
+                    'is_fallback': True,
+                    'confidence_cap': 0.0,
+                    'warnings': ['Quote unavailable'],
+                },
             },
             'technical': {
-                'current_price': 100.0,
-                'rsi': 50.0,
-                'macd': 0.0,
-                'volatility': 25.0,
-                'source': 'fallback'
+                'current_price': None,
+                'rsi': None,
+                'macd': None,
+                'volatility': None,
+                'source': 'unavailable',
+                'data_quality': {
+                    'source_status': 'unavailable',
+                    'source': 'historical_price_provider',
+                    'is_fallback': True,
+                    'confidence_cap': 0.0,
+                    'warnings': ['Technical indicators unavailable'],
+                },
             },
             'options': {
                 'symbol': symbol,
-                'put_call_ratio': 1.0,
-                'total_volume': 1000,
-                'source': 'fallback'
+                'put_call_ratio': None,
+                'total_call_volume': 0,
+                'total_put_volume': 0,
+                'total_volume': 0,
+                'source': 'unavailable',
+                'data_quality': {
+                    'source_status': 'unavailable',
+                    'source': 'options_provider',
+                    'is_fallback': True,
+                    'confidence_cap': 0.0,
+                    'warnings': ['Options data unavailable'],
+                },
             },
             'market_conditions': {
-                'vix': 20.0,
-                'market_trend': 'neutral',
-                'volatility_regime': 'medium'
+                'vix': None,
+                'market_trend': 'unknown',
+                'volatility_regime': 'unknown'
             },
-            'error': 'Using fallback data'
+            'data_quality': {
+                'source_status': 'unavailable',
+                'source': 'market_data_manager',
+                'is_fallback': True,
+                'confidence_cap': 0.0,
+                'warnings': ['Comprehensive market data unavailable'],
+            },
+            'error': 'Market data unavailable'
         }
 
 

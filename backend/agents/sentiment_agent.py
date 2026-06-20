@@ -142,6 +142,9 @@ OUTPUT FORMAT (JSON):
             
             # Analyze with GPT
             analysis = await self._analyze_sentiment_with_gpt(sentiment_data, symbol, current_date)
+            if analysis.get("fallback") and self._source_quality(sentiment_data).get("usable_source_count", 0) > 0:
+                logger.warning("Sentiment LLM response was not usable; using deterministic source-based sentiment")
+                analysis = self._build_deterministic_sentiment(sentiment_data)
             
             analysis["_raw_sentiment_data"] = sentiment_data
             analysis = self._validate_sentiment_analysis(analysis, symbol)
@@ -402,6 +405,61 @@ OUTPUT FORMAT (JSON):
             "is_fallback": len(usable_sources) == 0,
             "sources": [source.get("source") for source in usable_sources],
         }
+
+    def _build_deterministic_sentiment(self, sentiment_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Build sentiment directly from collected real sources when LLM formatting fails."""
+        news = sentiment_data.get("news_sentiment", {})
+        stocktwits = sentiment_data.get("stocktwits_sentiment", {})
+        psychology = sentiment_data.get("market_psychology", {})
+
+        components = []
+        if news and not news.get("is_fallback"):
+            components.append(("news", float(news.get("sentiment_score") or 0.0), 0.4))
+        if stocktwits and not stocktwits.get("is_fallback"):
+            components.append(("stocktwits", float(stocktwits.get("sentiment_score") or 0.0), 0.35))
+        if psychology and not psychology.get("is_fallback"):
+            vix_level = psychology.get("vix_level")
+            spy_change = psychology.get("spy_1m_change_percent") or 0.0
+            try:
+                vix_score = -0.35 if float(vix_level) >= 25 else 0.2 if float(vix_level) <= 15 else 0.0
+            except (TypeError, ValueError):
+                vix_score = 0.0
+            psychology_score = max(-1.0, min(1.0, vix_score + float(spy_change) / 50))
+            components.append(("market_psychology", psychology_score, 0.25))
+
+        if components:
+            total_weight = sum(weight for _, _, weight in components)
+            aggregate_score = sum(score * weight for _, score, weight in components) / total_weight
+        else:
+            aggregate_score = 0.0
+
+        trend = "improving" if aggregate_score > 0.15 else "deteriorating" if aggregate_score < -0.15 else "stable"
+        source_names = [name for name, _, _ in components]
+        return {
+            "aggregate_score": aggregate_score,
+            "confidence": min(0.55, 0.2 + 0.12 * len(components)),
+            "sources": {
+                "news_sentiment": {
+                    "score": float(news.get("sentiment_score") or 0.0),
+                    "article_count": int(news.get("article_count") or 0),
+                    "details": "Yahoo Finance news headline scoring" if news and not news.get("is_fallback") else "News unavailable",
+                },
+                "stocktwits_sentiment": {
+                    "score": float(stocktwits.get("sentiment_score") or 0.0),
+                    "message_count": int(stocktwits.get("message_count") or 0),
+                    "details": "Public StockTwits stream scoring" if stocktwits and not stocktwits.get("is_fallback") else "StockTwits unavailable",
+                },
+                "market_psychology": {
+                    "score": next((score for name, score, _ in components if name == "market_psychology"), 0.0),
+                    "indicators": "VIX and SPY proxy",
+                    "details": "Computed from yfinance VIX/SPY proxy" if psychology and not psychology.get("is_fallback") else "Market psychology unavailable",
+                },
+            },
+            "sentiment_trend": trend,
+            "key_factors": [f"Used {', '.join(source_names)} real sentiment sources"] if source_names else ["No real sentiment sources available"],
+            "risk_factors": ["LLM sentiment formatter failed; deterministic source scoring used"],
+            "data_freshness": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
     
     async def _analyze_sentiment_with_gpt(self, sentiment_data: Dict[str, Any], symbol: str, current_date: str) -> Dict[str, Any]:
         """Analyze collected sentiment data with GPT"""
@@ -454,7 +512,9 @@ OUTPUT FORMAT (JSON):
             analysis['confidence'] = 0.5
             
         analysis['aggregate_score'] = max(-1.0, min(1.0, analysis['aggregate_score']))
+        model_fallback = bool(analysis.get("fallback"))
         quality = self._source_quality(analysis.pop("_raw_sentiment_data", {}))
+        is_fallback = quality["is_fallback"] or model_fallback
         analysis['confidence'] = min(max(0.0, min(1.0, analysis['confidence'])), quality["confidence_cap"])
         analysis['timestamp'] = datetime.now().isoformat()
         analysis['symbol'] = symbol
@@ -462,7 +522,8 @@ OUTPUT FORMAT (JSON):
         analysis['data_freshness'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         analysis['data_quality'] = quality
         analysis['source'] = ",".join(quality.get("sources", [])) or "fallback"
-        analysis['is_fallback'] = quality["is_fallback"]
+        analysis['is_fallback'] = is_fallback
+        analysis['fallback'] = is_fallback
         
         return analysis
     
