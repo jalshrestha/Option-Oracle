@@ -44,6 +44,16 @@ async def set_json(key: str, value: Any, ttl_seconds: int) -> None:
         logger.debug(f"Redis cache write failed for {key}: {exc}")
 
 
+async def delete_json(key: str) -> None:
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        await client.delete(key)
+    except Exception as exc:
+        logger.debug(f"Redis cache delete failed for {key}: {exc}")
+
+
 async def health_check() -> dict:
     client = get_redis_client()
     if client is None:

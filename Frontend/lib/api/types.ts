@@ -128,6 +128,7 @@ export interface ChatResponse {
   actions?: Record<string, any>
   suggestions: string[]
   agents_triggered: string[]
+  thread_id?: string
   timestamp: string | number
 }
 
@@ -142,6 +143,26 @@ export interface ChatProgressEvent {
   symbol?: string
   success?: boolean
   data?: ChatResponse
+}
+
+export interface ChatHistoryMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  metadata?: Omit<ChatResponse, 'response'>
+  created_at: string
+}
+
+export interface ChatThreadSummary {
+  id: string
+  title: string
+  last_message_preview?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChatThreadDetail extends ChatThreadSummary {
+  messages: ChatHistoryMessage[]
 }
 
 export interface TechnicalIndicators {

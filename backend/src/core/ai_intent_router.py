@@ -487,6 +487,7 @@ Available capabilities:
 
 Instructions:
 - Use the provided context when the user says "this", "it", "the selected stock", or omits a ticker.
+- Use conversation_history to resolve follow-ups, pronouns, prior tickers, and prior analysis requests.
 - For price/current quote requests (e.g. "price of TSLA", "what is AAPL trading at"), call get_quote. Do not call analyze_stock for a simple quote.
 - For stock analysis requests, extract the symbol and call analyze_stock
 - For buying options with budget (e.g., "buy AAPL option with $500"), call buy_option
@@ -562,6 +563,7 @@ You can call multiple tools if needed.
             state["user_message"],
             state["llm_result"],
             state.get("tool_results", []),
+            state.get("context", {}),
         )
         return {
             "response": final_response,
@@ -622,8 +624,19 @@ You can call multiple tools if needed.
             "experience",
             "session_id",
             "user_id",
+            "thread_id",
         }
         safe = {key: context.get(key) for key in allowed_keys if context.get(key) is not None}
+        history = context.get("conversation_history")
+        if isinstance(history, list):
+            safe["conversation_history"] = [
+                {
+                    "role": str(message.get("role", ""))[:20],
+                    "content": str(message.get("content", ""))[:800],
+                }
+                for message in history[-8:]
+                if isinstance(message, dict) and message.get("content")
+            ]
         positions = context.get("positions") or context.get("portfolio", {}).get("positions")
         if isinstance(positions, list):
             safe["portfolio_position_count"] = len(positions)
@@ -655,6 +668,8 @@ You can call multiple tools if needed.
             normalized.setdefault("diversification", "moderate")
         elif tool_name == "get_market_trends":
             normalized.setdefault("limit", 8)
+        elif tool_name == "casual_response":
+            normalized.setdefault("context", self._conversation_context_text(state.get("context", {})))
 
         return normalized
 
@@ -674,7 +689,27 @@ You can call multiple tools if needed.
             upper = candidate.upper()
             if upper not in ignore and candidate.isupper():
                 return upper
+        history = context.get("conversation_history")
+        if isinstance(history, list):
+            for message in reversed(history[-8:]):
+                content = str(message.get("content", "")) if isinstance(message, dict) else ""
+                for candidate in re.findall(r"\b[A-Z]{1,6}\b", content):
+                    if candidate not in ignore:
+                        return candidate
         return None
+
+    def _conversation_context_text(self, context: Dict[str, Any]) -> str:
+        history = context.get("conversation_history")
+        if not isinstance(history, list):
+            return ""
+        lines = []
+        for message in history[-6:]:
+            if not isinstance(message, dict) or not message.get("content"):
+                continue
+            role = str(message.get("role", "message"))[:20]
+            content = " ".join(str(message.get("content", "")).split())[:500]
+            lines.append(f"{role}: {content}")
+        return "\n".join(lines)
 
     def _trend_symbols_for_sector(self, sector: Optional[str]) -> List[str]:
         sector_key = (sector or "").strip().lower()
@@ -913,6 +948,7 @@ You can call multiple tools if needed.
     async def _casual_response(self, args: Dict) -> Dict[str, Any]:
         """Generate a casual response with the configured LLM."""
         message = args["message"]
+        context = args.get("context") or ""
         response = await self.routing_client.complete(
             messages=[
                 {
@@ -920,9 +956,11 @@ You can call multiple tools if needed.
                     "content": (
                         "You are Oracle, a concise options-trading assistant. "
                         "Reply naturally to casual chat in one short sentence. "
+                        "Use the conversation context for continuity when relevant. "
                         "Do not use emojis. Do not fabricate market prices."
                     ),
                 },
+                *([{"role": "system", "content": f"Recent conversation:\n{context}"}] if context else []),
                 {"role": "user", "content": message},
             ],
             temperature=0.4,
@@ -991,7 +1029,8 @@ You can call multiple tools if needed.
         self, 
         user_message: str, 
         ai_message, 
-        tool_results: List[Dict]
+        tool_results: List[Dict],
+        context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Let OpenAI format the final human-readable response"""
         try:
@@ -1000,11 +1039,15 @@ You can call multiple tools if needed.
 
             # Create context for final formatting
             compact_results = self._compact_tool_results_for_prompt(tool_results)
+            conversation_context = self._conversation_context_text(context or {})
             
             format_prompt = f"""
 Based on the user's request and the evidence packet, provide a clear, helpful response in markdown format.
 
 User asked: "{user_message}"
+
+Recent conversation context:
+{conversation_context or "None"}
 
 Evidence packet: {json.dumps(compact_results, indent=2)}
 

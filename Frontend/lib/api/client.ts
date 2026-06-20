@@ -4,6 +4,8 @@ import type {
   AnalysisResponse,
   ChatResponse,
   ChatProgressEvent,
+  ChatThreadDetail,
+  ChatThreadSummary,
   HotStock,
   LLMProvider,
   OptionsChain,
@@ -300,26 +302,30 @@ export async function getSignals(
 // Chat
 export async function sendChat(
   message: string,
-  selectedStock?: string
+  selectedStock?: string,
+  threadId?: string
 ): Promise<ChatResponse> {
+  const sessionId = getSessionToken()
   return apiRequest('/api/v1/chat/message', {
     method: 'POST',
-    body: JSON.stringify({ message, selectedStock }),
+    body: JSON.stringify({ message, selectedStock, session_id: sessionId, thread_id: threadId }),
   })
 }
 
 export async function streamChat(
   message: string,
   onEvent: (event: ChatProgressEvent) => void,
-  selectedStock?: string
+  selectedStock?: string,
+  threadId?: string
 ): Promise<ChatResponse> {
+  const sessionId = getSessionToken()
   const response = await fetch(`${BASE_URL}/api/v1/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
     },
-    body: JSON.stringify({ message, selectedStock }),
+    body: JSON.stringify({ message, selectedStock, session_id: sessionId, thread_id: threadId }),
   })
 
   if (!response.ok || !response.body) {
@@ -355,6 +361,20 @@ export async function streamChat(
   }
 
   return finalResponse
+}
+
+export async function listChatThreads(): Promise<ChatThreadSummary[]> {
+  const sessionId = getSessionToken()
+  if (!sessionId) return []
+  return apiRequest(`/api/v1/chat/threads?session_id=${encodeURIComponent(sessionId)}`)
+}
+
+export async function getChatThread(threadId: string): Promise<ChatThreadDetail> {
+  const sessionId = getSessionToken()
+  if (!sessionId) {
+    throw new Error('No chat session available')
+  }
+  return apiRequest(`/api/v1/chat/threads/${threadId}?session_id=${encodeURIComponent(sessionId)}`)
 }
 
 export async function sendTradeChat(

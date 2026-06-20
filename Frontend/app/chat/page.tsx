@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity,
@@ -8,8 +8,10 @@ import {
   Brain,
   CheckCircle2,
   ChevronDown,
+  Clock3,
   FileText,
   LineChart,
+  MessageSquareText,
   Plus,
   Search,
   Send,
@@ -26,8 +28,9 @@ import { Spinner } from '@/components/ui/spinner'
 import { SignalBadge } from '@/components/analysis/signal-badge'
 import { ConfidenceMeter } from '@/components/analysis/confidence-meter'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
-import { sendChat, streamChat } from '@/lib/api/client'
-import type { ChatProgressEvent, ChatResponse } from '@/lib/api/types'
+import { getChatThread, listChatThreads, sendChat, streamChat } from '@/lib/api/client'
+import type { ChatProgressEvent, ChatResponse, ChatThreadSummary } from '@/lib/api/types'
+import { useSession } from '@/providers/session-provider'
 
 interface Message {
   id: string
@@ -431,10 +434,31 @@ function MessageRow({ message }: {
   )
 }
 
+function buildMessageData(content: string, metadata?: Record<string, any>): ChatResponse | undefined {
+  if (!metadata || !metadata.intent) return undefined
+  return {
+    response: content,
+    intent: metadata.intent,
+    symbol: metadata.symbol,
+    confidence: metadata.confidence,
+    data: metadata.data,
+    actions: metadata.actions,
+    suggestions: metadata.suggestions || [],
+    agents_triggered: metadata.agents_triggered || [],
+    thread_id: metadata.thread_id,
+    timestamp: metadata.timestamp || Date.now(),
+  }
+}
+
 export default function ChatPage() {
+  const { isReady: sessionReady } = useSession()
   const [messages, setMessages] = useState<Message[]>([])
+  const [threads, setThreads] = useState<ChatThreadSummary[]>([])
+  const [activeThreadId, setActiveThreadId] = useState<string | undefined>()
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingThread, setIsLoadingThread] = useState(false)
   const [progressEvent, setProgressEvent] = useState<ChatProgressEvent | undefined>()
   const [hasToolProgress, setHasToolProgress] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState<AgentProgressState>({})
@@ -445,9 +469,46 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, isLoading, progressEvent])
 
+  const refreshThreads = useCallback(async () => {
+    if (!sessionReady) return
+    try {
+      setThreads(await listChatThreads())
+    } catch {
+      setThreads([])
+    }
+  }, [sessionReady])
+
+  useEffect(() => {
+    refreshThreads()
+  }, [refreshThreads])
+
+  const handleNewChat = () => {
+    setActiveThreadId(undefined)
+    setMessages([])
+    setInput('')
+  }
+
+  const handleOpenThread = async (threadId: string) => {
+    if (isLoading) return
+    setIsLoadingThread(true)
+    try {
+      const thread = await getChatThread(threadId)
+      setActiveThreadId(thread.id)
+      setHistoryOpen(false)
+      setMessages(thread.messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.content,
+        data: message.role === 'assistant' ? buildMessageData(message.content, message.metadata) : undefined,
+      })))
+    } finally {
+      setIsLoadingThread(false)
+    }
+  }
+
   const handleSend = async (text?: string) => {
     const messageText = (text || input).trim()
-    if (!messageText || isLoading) return
+    if (!messageText || isLoading || !sessionReady) return
 
     setMessages((previous) => [
       ...previous,
@@ -481,7 +542,7 @@ export default function ChatPage() {
               setProgressEvent(event)
             }
           }
-        })
+        }, undefined, activeThreadId)
       } catch {
         setHasToolProgress(true)
         setProgressEvent({
@@ -490,9 +551,12 @@ export default function ChatPage() {
           label: 'Using standard request',
           detail: 'Live progress stream was unavailable, so Oracle is waiting for the normal chat response.',
         })
-        response = await sendChat(messageText)
+        response = await sendChat(messageText, undefined, activeThreadId)
       }
 
+      if (response.thread_id) {
+        setActiveThreadId(response.thread_id)
+      }
       setMessages((previous) => [
         ...previous,
         {
@@ -502,6 +566,7 @@ export default function ChatPage() {
           data: response,
         },
       ])
+      await refreshThreads()
     } catch {
       setMessages((previous) => [
         ...previous,
@@ -540,10 +605,78 @@ export default function ChatPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setHistoryOpen((open) => !open)}
+              className="hidden gap-2 rounded-full border border-white/10 bg-white/[0.035] hover:bg-white/[0.07] sm:flex"
+            >
+              <Clock3 className="h-4 w-4" />
+              History
+            </Button>
+            {historyOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                className="absolute right-0 top-11 z-50 hidden w-80 overflow-hidden rounded-2xl border border-white/10 bg-[#0b1018] shadow-[0_24px_80px_rgba(0,0,0,0.46)] md:block"
+              >
+                <div className="flex items-center justify-between border-b border-white/10 px-3 py-3">
+                  <div>
+                    <div className="text-sm font-medium">Chat history</div>
+                    <div className="text-xs text-muted-foreground">Open a previous Oracle thread</div>
+                  </div>
+                  <button
+                    onClick={handleNewChat}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-muted-foreground hover:text-foreground"
+                    aria-label="New chat"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <ScrollArea className="max-h-96">
+                  <div className="space-y-1 p-2">
+                    {threads.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-xs leading-5 text-muted-foreground">
+                        Previous chats will appear here.
+                      </div>
+                    ) : (
+                      threads.map((thread) => (
+                        <button
+                          key={thread.id}
+                          onClick={() => handleOpenThread(thread.id)}
+                          disabled={isLoadingThread}
+                          className={[
+                            'w-full rounded-xl px-3 py-3 text-left transition-colors',
+                            activeThreadId === thread.id
+                              ? 'bg-blue-500/14 text-foreground'
+                              : 'text-muted-foreground hover:bg-white/[0.055] hover:text-foreground',
+                          ].join(' ')}
+                        >
+                          <div className="flex items-start gap-2">
+                            <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium">{thread.title}</div>
+                              {thread.last_message_preview && (
+                                <div className="mt-1 line-clamp-2 text-xs leading-4 text-muted-foreground">
+                                  {thread.last_message_preview}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </motion.div>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setMessages([])}
+            onClick={handleNewChat}
             className="hidden gap-2 rounded-full border border-white/10 bg-white/[0.035] hover:bg-white/[0.07] sm:flex"
           >
             <Plus className="h-4 w-4" />
@@ -555,9 +688,10 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <ScrollArea className="relative z-10 min-h-0 flex-1">
-        {messages.length === 0 ? (
-          <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col items-center justify-center px-4 py-12 text-center">
+      <div className="relative z-10 flex min-h-0 flex-1">
+        <ScrollArea className="min-h-0 flex-1">
+          {messages.length === 0 ? (
+            <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col items-center justify-center px-4 py-12 text-center">
             <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.045] shadow-[0_20px_70px_rgba(37,99,235,0.20)]">
               <Sparkles className="h-6 w-6 text-blue-300" />
             </div>
@@ -581,9 +715,9 @@ export default function ChatPage() {
                 </button>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="space-y-8 py-8">
+            </div>
+          ) : (
+            <div className="space-y-8 py-8">
             <AnimatePresence initial={false}>
               {messages.map((message) => (
                 <MessageRow key={message.id} message={message} />
@@ -597,9 +731,10 @@ export default function ChatPage() {
               )}
             </AnimatePresence>
             <div ref={messagesEndRef} />
-          </div>
-        )}
-      </ScrollArea>
+            </div>
+          )}
+        </ScrollArea>
+      </div>
 
       <div className="relative z-10 shrink-0 border-t border-white/10 bg-[#080b11]/90 px-4 py-4 backdrop-blur-xl">
         <div className="mx-auto max-w-3xl">
@@ -618,7 +753,7 @@ export default function ChatPage() {
               />
               <Button
                 onClick={() => handleSend()}
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isLoading || !sessionReady}
                 className="mb-1 h-10 w-10 shrink-0 rounded-2xl bg-blue-600 p-0 text-white shadow-[0_12px_36px_rgba(37,99,235,0.32)] hover:bg-blue-500"
                 aria-label="Send message"
               >
