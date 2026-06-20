@@ -2,6 +2,7 @@
 from src.models.base import Base, TimestampMixin
 from src.models.analytics import SystemConfig, SystemSnapshot, TradingAnalytics
 from src.models.cache import AiAnalysisCache, MarketDataCache
+from src.models.chat import ChatMessage, ChatThread
 from src.models.educational import EducationalContent
 from src.models.order import Order
 from src.models.position import Position
@@ -15,6 +16,8 @@ __all__ = [
     "Base",
     "TimestampMixin",
     "BrowserSession",
+    "ChatThread",
+    "ChatMessage",
     "Stock",
     "TradingSignal",
     "Position",

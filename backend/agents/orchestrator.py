@@ -76,7 +76,8 @@ class OptionsOracleOrchestrator:
         self,
         symbol: str,
         user_risk_profile: Dict,
-        analysis_type: str = "full"
+        analysis_type: str = "full",
+        progress_callback=None,
     ) -> Dict[str, Any]:
         """Coordinate the full analysis pipeline for *symbol*."""
         if not self.initialized:
@@ -86,15 +87,48 @@ class OptionsOracleOrchestrator:
             logger.info(f"🔍 Starting comprehensive analysis for {symbol}")
             start_time = datetime.now()
 
-            agent_results = await self._run_agents(symbol)
+            agent_results = await self._run_agents(symbol, progress_callback=progress_callback)
             scenario = await self._detect_market_scenario(symbol, agent_results)
             adjusted_weights = self._adjust_weights_for_scenario(scenario)
             decision_score = self._calculate_weighted_decision(agent_results, adjusted_weights)
             signal = await self._generate_trading_signal(symbol, decision_score, agent_results, scenario)
-            strike_recommendations, educational_content = await asyncio.gather(
-                self.agents['risk'].recommend_strikes(signal, user_risk_profile),
-                self.agents['education'].generate_explanation(symbol, signal, agent_results),
-            )
+            if progress_callback:
+                await progress_callback({
+                    "stage": "agent_start",
+                    "agent": "risk",
+                    "label": "Risk",
+                    "detail": "Checking confidence, sizing, and real option candidates.",
+                    "symbol": symbol,
+                })
+                await progress_callback({
+                    "stage": "agent_start",
+                    "agent": "education",
+                    "label": "Trade brief",
+                    "detail": "Preparing the final decision context.",
+                    "symbol": symbol,
+                })
+
+            risk_task = asyncio.create_task(self.agents['risk'].recommend_strikes(signal, user_risk_profile))
+            education_task = asyncio.create_task(self.agents['education'].generate_explanation(symbol, signal, agent_results))
+            strike_recommendations, educational_content = await asyncio.gather(risk_task, education_task)
+
+            if progress_callback:
+                await progress_callback({
+                    "stage": "agent_complete",
+                    "agent": "risk",
+                    "label": "Risk",
+                    "detail": "Risk gate complete.",
+                    "symbol": symbol,
+                    "success": True,
+                })
+                await progress_callback({
+                    "stage": "agent_complete",
+                    "agent": "education",
+                    "label": "Trade brief",
+                    "detail": "Decision context ready.",
+                    "symbol": symbol,
+                    "success": True,
+                })
 
             final_analysis = self._build_output(
                 symbol, user_risk_profile, start_time,
@@ -110,18 +144,48 @@ class OptionsOracleOrchestrator:
             logger.error(f"Analysis failed for {symbol}: {e}")
             raise
 
-    async def _run_agents(self, symbol: str) -> Dict[str, Any]:
+    async def _run_agents(self, symbol: str, progress_callback=None) -> Dict[str, Any]:
         """Run the four core analysis agents in parallel and return their results."""
         agent_names = ['technical', 'sentiment', 'flow', 'history']
-        tasks = [
-            self.agents[name].analyze(symbol)
-            for name in agent_names
-            if name in self.agents
-        ]
+        async def run_agent(name: str):
+            if progress_callback:
+                await progress_callback({
+                    "stage": "agent_start",
+                    "agent": name,
+                    "label": self._agent_progress_label(name),
+                    "detail": self._agent_progress_detail(name),
+                    "symbol": symbol,
+                })
+            try:
+                result = await self.agents[name].analyze(symbol)
+                if progress_callback:
+                    await progress_callback({
+                        "stage": "agent_complete",
+                        "agent": name,
+                        "label": self._agent_progress_label(name),
+                        "detail": f"{self._agent_progress_label(name)} complete.",
+                        "symbol": symbol,
+                        "success": True,
+                    })
+                return result
+            except Exception as exc:
+                if progress_callback:
+                    await progress_callback({
+                        "stage": "agent_complete",
+                        "agent": name,
+                        "label": self._agent_progress_label(name),
+                        "detail": f"{self._agent_progress_label(name)} failed.",
+                        "symbol": symbol,
+                        "success": False,
+                    })
+                raise exc
+
+        active_agent_names = [name for name in agent_names if name in self.agents]
+        tasks = [run_agent(name) for name in active_agent_names]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         results = {}
-        for name, result in zip(agent_names, raw_results):
+        for name, result in zip(active_agent_names, raw_results):
             if isinstance(result, Exception):
                 logger.error(f"❌ {name} analysis failed: {result}")
                 results[name] = {"error": str(result), "confidence": 0.0}
@@ -129,6 +193,26 @@ class OptionsOracleOrchestrator:
                 logger.info(f"✅ {name.title()} analysis completed")
                 results[name] = result
         return results
+
+    def _agent_progress_label(self, name: str) -> str:
+        return {
+            'technical': 'Technical',
+            'sentiment': 'Sentiment',
+            'flow': 'Options flow',
+            'history': 'History',
+            'risk': 'Risk',
+            'education': 'Trade brief',
+        }.get(name, name.replace('_', ' ').title())
+
+    def _agent_progress_detail(self, name: str) -> str:
+        return {
+            'technical': 'Checking price levels, trend, RSI, MACD, and volume.',
+            'sentiment': 'Reading news, StockTwits, and market proxy sources.',
+            'flow': 'Checking public options chain volume, put/call, and liquidity.',
+            'history': 'Comparing recent candles, volatility, and key levels.',
+            'risk': 'Checking confidence, sizing, and real option candidates.',
+            'education': 'Preparing the final decision context.',
+        }.get(name, 'Running agent check.')
 
     def _build_output(
         self,
@@ -188,7 +272,9 @@ class OptionsOracleOrchestrator:
             elif status in {'limited', 'chain_only'}:
                 limited_agents.append(name)
 
-        if len(weak_agents) >= 2:
+        if 'technical' in weak_agents:
+            overall = 'weak'
+        elif len(weak_agents) >= 2:
             overall = 'weak'
         elif weak_agents or limited_agents:
             overall = 'partial'
@@ -230,13 +316,21 @@ class OptionsOracleOrchestrator:
             rationale.append('Signal confidence is below the minimum trade threshold.')
         if data_quality.get('overall') == 'weak':
             rationale.append('Data quality is too weak for a trade recommendation.')
+        technical_quality = data_quality.get('agents', {}).get('technical', {})
+        if technical_quality.get('source_status') in {'fallback', 'unavailable'} or technical_quality.get('is_fallback'):
+            rationale.append('Technical price history is unavailable, so no buy/sell setup is allowed.')
         if not strike_recommendations:
             rationale.append('No risk-managed strike recommendation is available.')
 
-        if bias != 'neutral' and confidence >= 0.35 and data_quality.get('overall') != 'weak' and strike_recommendations:
+        technical_ok = not (
+            technical_quality.get('source_status') in {'fallback', 'unavailable'}
+            or technical_quality.get('is_fallback')
+        )
+
+        if bias != 'neutral' and confidence >= 0.35 and data_quality.get('overall') != 'weak' and technical_ok and strike_recommendations:
             decision = 'PAPER_TRADE_CANDIDATE'
             rationale.append('Directional signal and risk recommendation are sufficient for paper review.')
-        elif bias != 'neutral' and data_quality.get('overall') == 'partial':
+        elif bias != 'neutral' and data_quality.get('overall') == 'partial' and technical_ok:
             decision = 'WATCHLIST'
 
         primary_strike = strike_recommendations[0] if isinstance(strike_recommendations, list) and strike_recommendations else {}

@@ -10,6 +10,7 @@ from datetime import datetime
 from config.logging import get_api_logger
 from langgraph.graph import StateGraph, END
 
+from src.core.agent_evidence import build_agent_evidence
 from src.llm.base import ToolCallResult
 from src.llm.factory import create_llm_client
 
@@ -341,7 +342,35 @@ class AIIntentRouter:
                     "detail": detail,
                     "symbol": normalized_args.get("symbol"),
                 }
-                tool_result = await self._execute_tool_call(tool_call, state)
+                if tool_call.name == "analyze_stock":
+                    progress_queue: asyncio.Queue = asyncio.Queue()
+
+                    async def progress_callback(event: Dict[str, Any]):
+                        await progress_queue.put(event)
+
+                    task = asyncio.create_task(
+                        self._execute_tool_call(tool_call, state, progress_callback=progress_callback)
+                    )
+                    while not task.done():
+                        try:
+                            progress = await asyncio.wait_for(progress_queue.get(), timeout=0.25)
+                            yield {
+                                "event": "progress",
+                                "tool": "analyze_stock",
+                                **progress,
+                            }
+                        except asyncio.TimeoutError:
+                            continue
+                    while not progress_queue.empty():
+                        progress = progress_queue.get_nowait()
+                        yield {
+                            "event": "progress",
+                            "tool": "analyze_stock",
+                            **progress,
+                        }
+                    tool_result = await task
+                else:
+                    tool_result = await self._execute_tool_call(tool_call, state)
                 tool_results.append(tool_result)
                 status = "complete" if tool_result.get("success") else "failed"
                 yield {
@@ -458,6 +487,7 @@ Available capabilities:
 
 Instructions:
 - Use the provided context when the user says "this", "it", "the selected stock", or omits a ticker.
+- Use conversation_history to resolve follow-ups, pronouns, prior tickers, and prior analysis requests.
 - For price/current quote requests (e.g. "price of TSLA", "what is AAPL trading at"), call get_quote. Do not call analyze_stock for a simple quote.
 - For stock analysis requests, extract the symbol and call analyze_stock
 - For buying options with budget (e.g., "buy AAPL option with $500"), call buy_option
@@ -533,6 +563,7 @@ You can call multiple tools if needed.
             state["user_message"],
             state["llm_result"],
             state.get("tool_results", []),
+            state.get("context", {}),
         )
         return {
             "response": final_response,
@@ -552,7 +583,7 @@ You can call multiple tools if needed.
             "timestamp": state.get("timestamp", datetime.now().isoformat()),
         }
     
-    async def _execute_tool_call(self, tool_call, state: ChatGraphState) -> Dict[str, Any]:
+    async def _execute_tool_call(self, tool_call, state: ChatGraphState, progress_callback=None) -> Dict[str, Any]:
         """Execute a single tool call and return results"""
         function_name = tool_call.name
         arguments = self._normalize_tool_arguments(tool_call.name, tool_call.arguments, state)
@@ -563,7 +594,7 @@ You can call multiple tools if needed.
             if function_name == "get_quote":
                 return await self._get_quote(arguments)
             elif function_name == "analyze_stock":
-                return await self._analyze_stock(arguments)
+                return await self._analyze_stock(arguments, progress_callback=progress_callback)
             elif function_name == "explain_concept":
                 return await self._explain_concept(arguments)
             elif function_name == "get_market_trends":
@@ -593,8 +624,19 @@ You can call multiple tools if needed.
             "experience",
             "session_id",
             "user_id",
+            "thread_id",
         }
         safe = {key: context.get(key) for key in allowed_keys if context.get(key) is not None}
+        history = context.get("conversation_history")
+        if isinstance(history, list):
+            safe["conversation_history"] = [
+                {
+                    "role": str(message.get("role", ""))[:20],
+                    "content": str(message.get("content", ""))[:800],
+                }
+                for message in history[-8:]
+                if isinstance(message, dict) and message.get("content")
+            ]
         positions = context.get("positions") or context.get("portfolio", {}).get("positions")
         if isinstance(positions, list):
             safe["portfolio_position_count"] = len(positions)
@@ -626,6 +668,8 @@ You can call multiple tools if needed.
             normalized.setdefault("diversification", "moderate")
         elif tool_name == "get_market_trends":
             normalized.setdefault("limit", 8)
+        elif tool_name == "casual_response":
+            normalized.setdefault("context", self._conversation_context_text(state.get("context", {})))
 
         return normalized
 
@@ -645,7 +689,27 @@ You can call multiple tools if needed.
             upper = candidate.upper()
             if upper not in ignore and candidate.isupper():
                 return upper
+        history = context.get("conversation_history")
+        if isinstance(history, list):
+            for message in reversed(history[-8:]):
+                content = str(message.get("content", "")) if isinstance(message, dict) else ""
+                for candidate in re.findall(r"\b[A-Z]{1,6}\b", content):
+                    if candidate not in ignore:
+                        return candidate
         return None
+
+    def _conversation_context_text(self, context: Dict[str, Any]) -> str:
+        history = context.get("conversation_history")
+        if not isinstance(history, list):
+            return ""
+        lines = []
+        for message in history[-6:]:
+            if not isinstance(message, dict) or not message.get("content"):
+                continue
+            role = str(message.get("role", "message"))[:20]
+            content = " ".join(str(message.get("content", "")).split())[:500]
+            lines.append(f"{role}: {content}")
+        return "\n".join(lines)
 
     def _trend_symbols_for_sector(self, sector: Optional[str]) -> List[str]:
         sector_key = (sector or "").strip().lower()
@@ -691,7 +755,7 @@ You can call multiple tools if needed.
                 "success": False,
             }
     
-    async def _analyze_stock(self, args: Dict) -> Dict[str, Any]:
+    async def _analyze_stock(self, args: Dict, progress_callback=None) -> Dict[str, Any]:
         """Execute stock analysis"""
         try:
             from agents.orchestrator import OptionsOracleOrchestrator
@@ -706,7 +770,12 @@ You can call multiple tools if needed.
             
             # Run analysis
             user_risk_profile = {"risk_tolerance": "moderate", "experience": "beginner"}
-            result = await orchestrator.analyze_stock(symbol, user_risk_profile, analysis_type)
+            result = await orchestrator.analyze_stock(
+                symbol,
+                user_risk_profile,
+                analysis_type,
+                progress_callback=progress_callback,
+            )
             
             return {
                 "tool": "analyze_stock",
@@ -879,6 +948,7 @@ You can call multiple tools if needed.
     async def _casual_response(self, args: Dict) -> Dict[str, Any]:
         """Generate a casual response with the configured LLM."""
         message = args["message"]
+        context = args.get("context") or ""
         response = await self.routing_client.complete(
             messages=[
                 {
@@ -886,9 +956,11 @@ You can call multiple tools if needed.
                     "content": (
                         "You are Oracle, a concise options-trading assistant. "
                         "Reply naturally to casual chat in one short sentence. "
+                        "Use the conversation context for continuity when relevant. "
                         "Do not use emojis. Do not fabricate market prices."
                     ),
                 },
+                *([{"role": "system", "content": f"Recent conversation:\n{context}"}] if context else []),
                 {"role": "user", "content": message},
             ],
             temperature=0.4,
@@ -957,7 +1029,8 @@ You can call multiple tools if needed.
         self, 
         user_message: str, 
         ai_message, 
-        tool_results: List[Dict]
+        tool_results: List[Dict],
+        context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Let OpenAI format the final human-readable response"""
         try:
@@ -966,24 +1039,29 @@ You can call multiple tools if needed.
 
             # Create context for final formatting
             compact_results = self._compact_tool_results_for_prompt(tool_results)
+            conversation_context = self._conversation_context_text(context or {})
             
             format_prompt = f"""
-Based on the user's request and the tool results, provide a clear, helpful response in markdown format.
+Based on the user's request and the evidence packet, provide a clear, helpful response in markdown format.
 
 User asked: "{user_message}"
 
-Tool results: {json.dumps(compact_results, indent=2)}
+Recent conversation context:
+{conversation_context or "None"}
+
+Evidence packet: {json.dumps(compact_results, indent=2)}
 
 Instructions:
 1. Write in a friendly, conversational tone
 2. Keep the response concise and do not use emojis
 3. Use markdown formatting for readability when it helps
 4. If get_quote was used, answer with the price, change, percent change, and data source only. Do not add technical analysis.
-5. If stock analysis was performed, lead with trade_decision, signal, confidence, current price, data quality, scenario, technical levels, options flow, key risks, and next action
+5. If stock analysis was performed, lead with the practical decision, current price, confidence, key levels, evidence, risks, and next action
 6. If explaining concepts, make it easy to understand
 7. Include relevant data and insights from tool results
 8. End with one helpful next step
-9. If data_quality is weak, fallback, unavailable, or limited, say so plainly and do not imply institutional flow or live social data
+9. Never expose implementation details such as formatter failures, fallback code paths, missing libraries, confidence caps, deterministic scoring, or raw backend labels
+10. If source coverage is limited, translate it into user language: "public chain data only", "daily candle data", or "sentiment sources are available but not exhaustive"
 
 Keep the answer under 700 words.
 """
@@ -1008,65 +1086,11 @@ Keep the answer under 700 words.
         for result in tool_results:
             tool = result.get("tool")
             if tool == "analyze_stock" and result.get("analysis_result"):
-                analysis = result["analysis_result"]
-                agent_results = analysis.get("agent_results", {})
-                technical = agent_results.get("technical", {})
-                flow = agent_results.get("flow", {})
-                sentiment = agent_results.get("sentiment", {})
-                history = agent_results.get("history", {})
-                signal = analysis.get("signal", {})
                 compact.append({
                     "tool": tool,
                     "success": result.get("success", False),
                     "symbol": result.get("symbol"),
-                    "market_scenario": analysis.get("market_scenario"),
-                    "confidence": analysis.get("confidence"),
-                    "decision_score": analysis.get("decision_score"),
-                    "signal": signal,
-                    "trade_decision": analysis.get("trade_decision"),
-                    "data_quality": analysis.get("data_quality"),
-                    "technical": {
-                        "scenario": technical.get("scenario"),
-                        "weighted_score": technical.get("weighted_score"),
-                        "confidence": technical.get("confidence"),
-                        "support_resistance": technical.get("support_resistance"),
-                        "volume_analysis": technical.get("volume_analysis"),
-                        "key_insights": technical.get("key_insights", [])[:3],
-                        "market_data_snapshot": {
-                            "current_price": technical.get("market_data_snapshot", {}).get("current_price"),
-                            "change_percent": technical.get("market_data_snapshot", {}).get("change_percent"),
-                            "source": technical.get("market_data_snapshot", {}).get("source"),
-                        },
-                    },
-                    "options_flow": {
-                        "flow_score": flow.get("flow_score"),
-                        "confidence": flow.get("confidence"),
-                        "unusual_activity": flow.get("unusual_activity"),
-                        "metrics": flow.get("metrics"),
-                        "flow_sentiment": flow.get("flow_sentiment"),
-                        "key_insights": flow.get("key_insights", [])[:3],
-                        "data_quality": flow.get("data_quality"),
-                        "source": flow.get("source"),
-                        "is_fallback": flow.get("is_fallback"),
-                    },
-                    "sentiment": {
-                        "aggregate_score": sentiment.get("aggregate_score"),
-                        "confidence": sentiment.get("confidence"),
-                        "sentiment_trend": sentiment.get("sentiment_trend"),
-                        "key_factors": sentiment.get("key_factors", [])[:3],
-                        "risk_factors": sentiment.get("risk_factors", [])[:3],
-                        "data_quality": sentiment.get("data_quality"),
-                        "source": sentiment.get("source"),
-                        "is_fallback": sentiment.get("is_fallback"),
-                    },
-                    "history": {
-                        "pattern_score": history.get("pattern_score"),
-                        "confidence": history.get("confidence"),
-                        "dominant_pattern": history.get("dominant_pattern"),
-                        "key_levels": history.get("key_levels"),
-                        "pattern_insights": history.get("pattern_insights", [])[:3],
-                    },
-                    "strike_recommendations": analysis.get("strike_recommendations", [])[:3],
+                    "evidence": build_agent_evidence(result["analysis_result"]),
                 })
             else:
                 compact.append(result)

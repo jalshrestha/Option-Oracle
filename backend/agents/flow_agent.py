@@ -189,26 +189,6 @@ Provide flow analysis with this options data. If data quality is fallback, unava
         
         return "\n".join(formatted) if formatted else "No detailed options data"
     
-    def _get_mock_flow_data(self, symbol: str) -> Dict:
-        """Generate mock options flow data"""
-        import random
-        
-        call_volume = random.randint(1000, 10000)
-        put_volume = random.randint(500, 8000)
-        
-        return {
-            'call_volume': call_volume,
-            'put_volume': put_volume,
-            'put_call_ratio': put_volume / call_volume,
-            'volume_vs_avg': random.uniform(0.5, 3.0),
-            'call_oi': random.randint(10000, 50000),
-            'put_oi': random.randint(8000, 40000),
-            'gamma_exposure': random.randint(100, 1000),
-            'unusual_calls': random.choice([True, False]),
-            'unusual_puts': random.choice([True, False]),
-            'block_trades': random.randint(0, 5)
-        }
-    
     def _validate_flow_analysis(self, analysis: Dict, symbol: str, data_quality: Dict[str, Any] = None) -> Dict:
         """Validate flow analysis"""
         data_quality = data_quality or self._fallback_data_quality()
@@ -227,6 +207,12 @@ Provide flow analysis with this options data. If data quality is fallback, unava
             analysis['unusual_activity'] = False
             analysis['large_trades'] = []
             analysis['flow_sentiment'] = 'neutral'
+        elif data_quality['source_status'] in {'limited', 'chain_only'}:
+            analysis['unusual_activity'] = False
+            analysis['large_trades'] = []
+            insights = analysis.setdefault('key_insights', [])
+            if not any('sweep' in str(item).lower() or 'block' in str(item).lower() for item in insights):
+                insights.append('No sweep/block feed is connected; elevated chain volume is not treated as confirmed unusual activity.')
         analysis['timestamp'] = datetime.now().isoformat()
         analysis['symbol'] = symbol
         analysis['agent'] = self.name

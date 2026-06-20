@@ -3,19 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Sun, Moon, Bell, LogIn, LogOut, User } from 'lucide-react'
+import { Search, Sun, Moon, LogIn, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { useSystemHealth } from '@/lib/hooks/use-api'
 import { useAuth } from '@/providers/auth-provider'
-import { cn } from '@/lib/utils'
 import { CommandPalette } from './command-palette'
 import Link from 'next/link'
 
 export function Header() {
   const { theme, setTheme } = useTheme()
-  const { data: health } = useSystemHealth()
   const { user, logout } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
@@ -38,13 +33,6 @@ export function Header() {
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }
-
-  const healthStatus = health?.overall_status || 'healthy'
-  const statusColor = healthStatus === 'healthy' 
-    ? 'bg-green-500' 
-    : healthStatus === 'degraded' 
-      ? 'bg-amber-500' 
-      : 'bg-red-500'
 
   return (
     <>
@@ -110,19 +98,6 @@ export function Header() {
               </AnimatePresence>
             </Button>
           )}
-
-          {/* System Status */}
-          <div className="flex items-center gap-2 rounded-lg border border-border/80 bg-card/60 px-3 py-1.5">
-            <div className={cn('h-2 w-2 rounded-full', statusColor)} />
-            <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
-              {healthStatus === 'healthy' ? 'Online' : healthStatus}
-            </span>
-          </div>
-
-          {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative h-9 w-9 text-muted-foreground hover:text-foreground">
-            <Bell className="h-4 w-4" />
-          </Button>
 
           {/* User / Auth */}
           {user && !user.email.includes('@anon.example.com') ? (

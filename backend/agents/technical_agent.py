@@ -240,6 +240,11 @@ Remember: You are the primary decision driver with 60% weight in the final syste
             quote_data = market_data.get('quote', {})
             market_conditions = market_data.get('market_conditions', {})
             tech_data = self._reconcile_technical_with_quote(tech_data, quote_data)
+            data_quality = self._assess_technical_data_quality(tech_data, quote_data)
+
+            if data_quality["source_status"] in {"unavailable", "fallback"}:
+                logger.warning(f"Technical indicators unavailable for {symbol}; returning no-signal result")
+                return self._get_unavailable_analysis(symbol, tech_data, data_quality)
             
             # Prepare the analysis prompt with real market data
             messages = [
@@ -248,40 +253,41 @@ Remember: You are the primary decision driver with 60% weight in the final syste
 Analyze the technical indicators for {symbol} using the following REAL MARKET DATA:
 
 PRICE DATA:
-- Current Price: ${tech_data.get('current_price', 0):.2f}
-- Daily Change: {tech_data.get('change_percent', 0):.2f}%
-- Volume: {tech_data.get('current_volume', 0):,.0f} (Avg: {tech_data.get('avg_volume', 0):,.0f})
-- Volume Ratio: {tech_data.get('volume_ratio', 1.0):.2f}x
+- Current Price: {self._money(tech_data.get('current_price'))}
+- Daily Change: {self._pct(tech_data.get('change_percent'))}
+- Volume: {self._number(tech_data.get('current_volume'))} (Avg: {self._number(tech_data.get('avg_volume'))})
+- Volume Ratio: {self._ratio(tech_data.get('volume_ratio'))}
 
 TECHNICAL INDICATORS:
-- RSI(14): {tech_data.get('rsi', 50):.1f}
-- MACD: {tech_data.get('macd', 0):.3f} (Signal: {tech_data.get('macd_signal', 0):.3f})
-- MACD Histogram: {tech_data.get('macd_histogram', 0):.3f}
-- BB Position: {tech_data.get('bb_position', 0.5):.2f} (0=lower, 0.5=middle, 1=upper)
-- VWAP: ${tech_data.get('vwap', 0):.2f}
+- RSI(14): {self._number(tech_data.get('rsi'), decimals=1)}
+- MACD: {self._number(tech_data.get('macd'), decimals=3)} (Signal: {self._number(tech_data.get('macd_signal'), decimals=3)})
+- MACD Histogram: {self._number(tech_data.get('macd_histogram'), decimals=3)}
+- BB Position: {self._number(tech_data.get('bb_position'), decimals=2)} (0=lower, 0.5=middle, 1=upper)
+- VWAP: {self._money(tech_data.get('vwap'))}
 
 MOVING AVERAGES:
-- MA5: ${tech_data.get('ma5', 0):.2f}
-- MA20: ${tech_data.get('ma20', 0):.2f}  
-- MA50: ${tech_data.get('ma50', 0):.2f}
-- MA200: ${tech_data.get('ma200', 0):.2f}
+- MA5: {self._money(tech_data.get('ma5'))}
+- MA20: {self._money(tech_data.get('ma20'))}
+- MA50: {self._money(tech_data.get('ma50'))}
+- MA200: {self._money(tech_data.get('ma200'))}
 
 BOLLINGER BANDS:
-- Upper: ${tech_data.get('bb_upper', 0):.2f}
-- Middle: ${tech_data.get('bb_middle', 0):.2f}
-- Lower: ${tech_data.get('bb_lower', 0):.2f}
+- Upper: {self._money(tech_data.get('bb_upper'))}
+- Middle: {self._money(tech_data.get('bb_middle'))}
+- Lower: {self._money(tech_data.get('bb_lower'))}
 
 VOLATILITY & MARKET CONDITIONS:
-- 30-day HV: {tech_data.get('volatility', 25):.1f}%
-- Market VIX: {market_conditions.get('vix', 20):.1f}
+- 30-day HV: {self._pct(tech_data.get('volatility'))}
+- Market VIX: {self._number(market_conditions.get('vix'), decimals=1)}
 - Market Trend: {market_conditions.get('market_trend', 'neutral')}
 - Volatility Regime: {market_conditions.get('volatility_regime', 'medium')}
 
 SUPPORT/RESISTANCE:
-- Resistance: ${tech_data.get('resistance', 0):.2f}
-- Support: ${tech_data.get('support', 0):.2f}
+- Resistance: {self._money(tech_data.get('resistance'))}
+- Support: {self._money(tech_data.get('support'))}
 
 Data Source: {tech_data.get('source', 'unknown')}
+Data Quality: {data_quality['source_status']}
 
 Please provide a comprehensive technical analysis with scenario detection and weighted scoring using this REAL market data.
                 """}
@@ -296,9 +302,12 @@ Please provide a comprehensive technical analysis with scenario detection and we
             
             # Parse the response
             analysis = self._parse_json_response(response['content'])
+            if analysis.get('fallback') and not data_quality.get('is_fallback'):
+                logger.warning("Technical LLM response was not usable; using deterministic candle-based analysis")
+                analysis = self._build_deterministic_analysis(tech_data, data_quality)
             
             # Validate and enhance the analysis
-            analysis = self._validate_analysis(analysis, symbol, tech_data)
+            analysis = self._validate_analysis(analysis, symbol, tech_data, data_quality)
             
             logger.info(f"Technical analysis completed for {symbol}: {analysis.get('scenario', 'unknown')} scenario")
             return analysis
@@ -306,6 +315,38 @@ Please provide a comprehensive technical analysis with scenario detection and we
         except Exception as e:
             logger.error(f"Technical analysis failed for {symbol}: {e}")
             return self._get_fallback_analysis(symbol)
+
+    def _money(self, value: Any) -> str:
+        try:
+            if value is None:
+                return "unavailable"
+            return f"${float(value):.2f}"
+        except (TypeError, ValueError):
+            return "unavailable"
+
+    def _pct(self, value: Any) -> str:
+        try:
+            if value is None:
+                return "unavailable"
+            return f"{float(value):.2f}%"
+        except (TypeError, ValueError):
+            return "unavailable"
+
+    def _number(self, value: Any, decimals: int = 0) -> str:
+        try:
+            if value is None:
+                return "unavailable"
+            return f"{float(value):,.{decimals}f}"
+        except (TypeError, ValueError):
+            return "unavailable"
+
+    def _ratio(self, value: Any) -> str:
+        try:
+            if value is None:
+                return "unavailable"
+            return f"{float(value):.2f}x"
+        except (TypeError, ValueError):
+            return "unavailable"
 
     def _reconcile_technical_with_quote(
         self,
@@ -325,10 +366,26 @@ Please provide a comprehensive technical analysis with scenario detection and we
             return reconciled
 
         source = str(reconciled.get('source', '')).lower()
-        has_placeholder_source = 'fallback' in source
+        has_placeholder_source = 'fallback' in source or 'unavailable' in source
         has_large_dislocation = tech_price <= 0 or abs(tech_price - quote_price) / quote_price > 0.2
 
         if not has_placeholder_source and not has_large_dislocation:
+            return reconciled
+
+        if has_placeholder_source:
+            reconciled.update({
+                'current_price': quote_price,
+                'change_percent': quote_data.get('change_percent'),
+                'current_volume': quote_data.get('volume'),
+                'source': 'quote_only_no_technical_indicators',
+                'data_quality': {
+                    'source_status': 'unavailable',
+                    'source': 'quote_only',
+                    'confidence_cap': 0.0,
+                    'is_fallback': True,
+                    'warnings': ['Live quote available, but historical candles/technical indicators unavailable'],
+                },
+            })
             return reconciled
 
         change_percent = float(quote_data.get('change_percent') or reconciled.get('change_percent') or 0)
@@ -352,12 +409,193 @@ Please provide a comprehensive technical analysis with scenario detection and we
             'volume_ratio': volume / avg_volume if avg_volume else 1.0,
             'resistance': quote_price * 1.05,
             'support': quote_price * 0.95,
-            'source': 'quote_reconciled_fallback',
+            'source': 'quote_reconciled_real_price',
+            'data_quality': {
+                'source_status': 'limited',
+                'source': 'quote_reconciled',
+                'confidence_cap': 0.35,
+                'is_fallback': False,
+                'warnings': ['Technical price was reconciled against the live quote'],
+            },
         })
         return reconciled
+
+    def _assess_technical_data_quality(
+        self,
+        tech_data: Dict[str, Any],
+        quote_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        explicit = tech_data.get('data_quality')
+        if isinstance(explicit, dict):
+            return {
+                'source_status': explicit.get('source_status', 'unknown'),
+                'source': explicit.get('source', tech_data.get('source', 'unknown')),
+                'confidence_cap': float(explicit.get('confidence_cap', 0.0)),
+                'is_fallback': bool(explicit.get('is_fallback', False)),
+                'warnings': explicit.get('warnings', []),
+            }
+
+        source = str(tech_data.get('source') or 'unknown')
+        required = ['current_price', 'ma20', 'ma50', 'rsi', 'macd', 'support', 'resistance']
+        missing = [key for key in required if tech_data.get(key) is None]
+        if 'fallback' in source.lower() or 'unavailable' in source.lower() or missing:
+            warnings = ['Missing required technical fields: ' + ', '.join(missing)] if missing else []
+            if quote_data.get('price'):
+                warnings.append('Quote is available, but technical indicators are incomplete')
+            return {
+                'source_status': 'unavailable',
+                'source': source,
+                'confidence_cap': 0.0,
+                'is_fallback': True,
+                'warnings': warnings or ['Technical indicators unavailable'],
+            }
+
+        data_points = int(tech_data.get('data_points') or 0)
+        if data_points and data_points < 50:
+            return {
+                'source_status': 'limited',
+                'source': source,
+                'confidence_cap': 0.45,
+                'is_fallback': False,
+                'warnings': [f'Only {data_points} historical bars available'],
+            }
+
+        return {
+            'source_status': 'usable',
+            'source': source,
+            'confidence_cap': 0.8,
+            'is_fallback': False,
+            'warnings': [],
+        }
+
+    def _build_deterministic_analysis(
+        self,
+        market_data: Dict[str, Any],
+        data_quality: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build a real-data technical read when the LLM JSON response is unusable."""
+        def num(key: str) -> float | None:
+            try:
+                value = market_data.get(key)
+                return float(value) if value is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        price = num('current_price')
+        ma20 = num('ma20')
+        ma50 = num('ma50')
+        rsi = num('rsi')
+        macd = num('macd')
+        macd_signal = num('macd_signal')
+        bb_position = num('bb_position')
+        vwap = num('vwap')
+        volume_ratio = num('volume_ratio')
+        volatility = num('volatility')
+        support = num('support')
+        resistance = num('resistance')
+
+        def clamp(value: float) -> float:
+            return max(-1.0, min(1.0, value))
+
+        ma_signal = 0.0
+        if price and ma20 and ma50:
+            ma_signal = clamp(((price - ma20) / ma20 + (price - ma50) / ma50) * 5)
+
+        rsi_signal = 0.0
+        if rsi is not None:
+            if rsi < 30:
+                rsi_signal = 0.45
+            elif rsi > 70:
+                rsi_signal = -0.45
+            else:
+                rsi_signal = clamp((rsi - 50) / 50)
+
+        macd_signal_value = 0.0
+        if macd is not None and macd_signal is not None and price:
+            macd_signal_value = clamp((macd - macd_signal) / max(price * 0.01, 1))
+
+        bb_signal = 0.0
+        if bb_position is not None:
+            bb_signal = clamp((bb_position - 0.5) * 2)
+
+        vwap_signal = 0.0
+        if price and vwap:
+            vwap_signal = clamp((price - vwap) / vwap * 10)
+
+        weights = {'ma': 0.30, 'rsi': 0.15, 'bb': 0.10, 'macd': 0.25, 'vwap': 0.20}
+        weighted_score = (
+            ma_signal * weights['ma']
+            + rsi_signal * weights['rsi']
+            + bb_signal * weights['bb']
+            + macd_signal_value * weights['macd']
+            + vwap_signal * weights['vwap']
+        )
+        weighted_score = clamp(weighted_score)
+
+        if volatility and volatility > 45:
+            scenario = 'high_volatility'
+        elif weighted_score > 0.35:
+            scenario = 'strong_uptrend'
+        elif weighted_score < -0.35:
+            scenario = 'strong_downtrend'
+        else:
+            scenario = 'range_bound'
+
+        signal_values = [ma_signal, rsi_signal, bb_signal, macd_signal_value, vwap_signal]
+        confidence = min(
+            sum(abs(value) for value in signal_values) / len(signal_values),
+            float(data_quality.get('confidence_cap', 0.55)),
+        )
+
+        insights = []
+        if price and ma20:
+            relation = 'above' if price > ma20 else 'below'
+            insights.append(f"Price is {relation} the 20-day moving average.")
+        if rsi is not None:
+            insights.append(f"RSI is {rsi:.1f}, indicating {'oversold' if rsi < 30 else 'overbought' if rsi > 70 else 'neutral-to-moderate'} momentum.")
+        if volume_ratio is not None:
+            insights.append(f"Volume is {volume_ratio:.2f}x its recent average.")
+        if not insights:
+            insights.append("Technical indicators were calculated from real candles, but signals are limited.")
+
+        return {
+            'scenario': scenario,
+            'weighted_score': weighted_score,
+            'confidence': confidence,
+            'indicators': {
+                'ma': {'signal': ma_signal, 'weight': weights['ma'], 'details': f"Price {self._money(price)} vs MA20 {self._money(ma20)} and MA50 {self._money(ma50)}."},
+                'rsi': {'signal': rsi_signal, 'weight': weights['rsi'], 'details': f"RSI {self._number(rsi, 1)}."},
+                'bb': {'signal': bb_signal, 'weight': weights['bb'], 'details': f"BB position {self._number(bb_position, 2)}."},
+                'macd': {'signal': macd_signal_value, 'weight': weights['macd'], 'details': f"MACD {self._number(macd, 3)} vs signal {self._number(macd_signal, 3)}."},
+                'vwap': {'signal': vwap_signal, 'weight': weights['vwap'], 'details': f"Price {self._money(price)} vs VWAP {self._money(vwap)}."},
+            },
+            'support_resistance': {
+                'support': [support] if support else [],
+                'resistance': [resistance] if resistance else [],
+            },
+            'volatility': {
+                'current': volatility,
+                'percentile': None,
+                'trend': 'stable',
+            },
+            'volume_analysis': {
+                'relative_volume': volume_ratio,
+                'volume_trend': 'above average' if volume_ratio and volume_ratio > 1.2 else 'normal',
+                'volume_score': clamp((volume_ratio - 1) if volume_ratio is not None else 0.0),
+            },
+            'key_insights': insights[:5],
+            'options_strategy_suggestion': 'Wait for a confirmed directional trigger before choosing an options strategy.' if abs(weighted_score) < 0.25 else 'Use defined-risk options structures; verify liquidity before entry.',
+        }
     
-    def _validate_analysis(self, analysis: Dict, symbol: str, market_data: Dict) -> Dict[str, Any]:
+    def _validate_analysis(
+        self,
+        analysis: Dict,
+        symbol: str,
+        market_data: Dict,
+        data_quality: Dict[str, Any] = None,
+    ) -> Dict[str, Any]:
         """Validate and enhance the analysis response"""
+        data_quality = data_quality or self._assess_technical_data_quality(market_data, {})
 
         # Ensure required fields exist
         self._ensure_fields(analysis, {
@@ -368,13 +606,20 @@ Please provide a comprehensive technical analysis with scenario detection and we
         
         # Validate numeric ranges
         analysis['weighted_score'] = max(-1.0, min(1.0, analysis['weighted_score']))
-        analysis['confidence'] = self._validate_confidence(analysis['confidence'])
+        analysis['confidence'] = min(
+            self._validate_confidence(analysis['confidence']),
+            float(data_quality.get('confidence_cap', 0.8)),
+        )
         
         # Add metadata
         analysis['timestamp'] = datetime.now().isoformat()
         analysis['symbol'] = symbol
         analysis['agent'] = self.name
         analysis['market_data_snapshot'] = market_data
+        analysis['data_quality'] = data_quality
+        analysis['source'] = data_quality.get('source', market_data.get('source', 'unknown'))
+        analysis['is_fallback'] = bool(data_quality.get('is_fallback', False))
+        analysis['fallback'] = bool(data_quality.get('is_fallback', False))
         
         # Ensure indicators structure exists
         if 'indicators' not in analysis:
@@ -387,6 +632,52 @@ Please provide a comprehensive technical analysis with scenario detection and we
             }
         
         return analysis
+
+    def _get_unavailable_analysis(
+        self,
+        symbol: str,
+        market_data: Dict[str, Any],
+        data_quality: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        current_price = market_data.get('current_price')
+        return {
+            'scenario': 'DATA_UNAVAILABLE',
+            'weighted_score': 0.0,
+            'confidence': 0.0,
+            'indicators': {
+                'ma': {'signal': 0.0, 'weight': 0.0, 'details': 'Moving averages unavailable'},
+                'rsi': {'signal': 0.0, 'weight': 0.0, 'details': 'RSI unavailable'},
+                'bb': {'signal': 0.0, 'weight': 0.0, 'details': 'Bollinger Bands unavailable'},
+                'macd': {'signal': 0.0, 'weight': 0.0, 'details': 'MACD unavailable'},
+                'vwap': {'signal': 0.0, 'weight': 0.0, 'details': 'VWAP unavailable'},
+            },
+            'support_resistance': {
+                'support': [],
+                'resistance': [],
+            },
+            'volatility': {
+                'current': None,
+                'percentile': None,
+                'trend': 'stable',
+            },
+            'volume_analysis': {
+                'relative_volume': None,
+                'volume_trend': 'unavailable',
+                'volume_score': 0.0,
+            },
+            'key_insights': ['Technical analysis unavailable because historical candle data is missing'],
+            'options_strategy_suggestion': 'Do not place a trade from technicals until price history is available',
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'agent': self.name,
+            'market_data_snapshot': market_data,
+            'current_price': current_price,
+            'data_quality': data_quality,
+            'source': data_quality.get('source', market_data.get('source', 'unknown')),
+            'is_fallback': True,
+            'fallback': True,
+            'error': 'Technical data unavailable',
+        }
     
     def _get_fallback_analysis(self, symbol: str) -> Dict[str, Any]:
         """Provide fallback analysis when main analysis fails"""
@@ -394,7 +685,7 @@ Please provide a comprehensive technical analysis with scenario detection and we
         return {
             'scenario': 'range_bound',
             'weighted_score': 0.0,
-            'confidence': 0.3,
+            'confidence': 0.0,
             'indicators': {
                 'ma': {'signal': 0.0, 'weight': 0.15, 'details': 'Analysis unavailable'},
                 'rsi': {'signal': 0.0, 'weight': 0.25, 'details': 'Analysis unavailable'},
@@ -403,17 +694,17 @@ Please provide a comprehensive technical analysis with scenario detection and we
                 'vwap': {'signal': 0.0, 'weight': 0.15, 'details': 'Analysis unavailable'}
             },
             'support_resistance': {
-                'support': [0.0, 0.0],
-                'resistance': [0.0, 0.0]
+                'support': [],
+                'resistance': []
             },
             'volatility': {
-                'current': 20.0,
-                'percentile': 50.0,
+                'current': None,
+                'percentile': None,
                 'trend': 'stable'
             },
             'volume_analysis': {
-                'relative_volume': 1.0,
-                'volume_trend': 'average',
+                'relative_volume': None,
+                'volume_trend': 'unavailable',
                 'volume_score': 0.0
             },
             'key_insights': ['Technical analysis temporarily unavailable'],
@@ -421,5 +712,15 @@ Please provide a comprehensive technical analysis with scenario detection and we
             'error': 'Fallback analysis due to system error',
             'timestamp': datetime.now().isoformat(),
             'symbol': symbol,
-            'agent': self.name
+            'agent': self.name,
+            'data_quality': {
+                'source_status': 'unavailable',
+                'source': 'technical_agent',
+                'confidence_cap': 0.0,
+                'is_fallback': True,
+                'warnings': ['Technical analysis failed'],
+            },
+            'source': 'technical_agent',
+            'is_fallback': True,
+            'fallback': True,
         }

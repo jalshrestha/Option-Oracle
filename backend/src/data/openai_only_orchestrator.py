@@ -436,21 +436,33 @@ class OpenAIMarketIntelligence:
         try:
             # Get real technical data
             technical_data = await self.alpaca_client.get_technical_indicators(symbol)
+            data_quality = technical_data.get("data_quality", {})
+            if data_quality.get("source_status") == "unavailable":
+                return {
+                    "trend_direction": "neutral",
+                    "trend_strength": "weak",
+                    "momentum": "neutral",
+                    "technical_signals": ["Technical indicators unavailable"],
+                    "confidence": 0.0,
+                    "raw_technical_data": technical_data,
+                    "data_quality": data_quality,
+                }
             
             prompt = f"""
             Analyze the technical indicators for {symbol}:
             
             REAL TECHNICAL DATA:
-            - Current Price: ${technical_data.get('current_price', 0):.2f}
-            - RSI: {technical_data.get('rsi', 50):.2f}
-            - MACD: {technical_data.get('macd', 0):.4f}
-            - MACD Signal: {technical_data.get('macd_signal', 0):.4f}
-            - BB Upper: ${technical_data.get('bb_upper', 0):.2f}
-            - BB Lower: ${technical_data.get('bb_lower', 0):.2f}
-            - Volume: {technical_data.get('volume', 0):,}
-            - Volatility: {technical_data.get('volatility', 0):.2f}%
-            - Support: ${technical_data.get('support', 0):.2f}
-            - Resistance: ${technical_data.get('resistance', 0):.2f}
+            - Current Price: {self._format_money(technical_data.get('current_price'))}
+            - RSI: {self._format_number(technical_data.get('rsi'), 2)}
+            - MACD: {self._format_number(technical_data.get('macd'), 4)}
+            - MACD Signal: {self._format_number(technical_data.get('macd_signal'), 4)}
+            - BB Upper: {self._format_money(technical_data.get('bb_upper'))}
+            - BB Lower: {self._format_money(technical_data.get('bb_lower'))}
+            - Volume: {self._format_integer(technical_data.get('volume'))}
+            - Volatility: {self._format_percent_value(technical_data.get('volatility'))}
+            - Support: {self._format_money(technical_data.get('support'))}
+            - Resistance: {self._format_money(technical_data.get('resistance'))}
+            - Data Quality: {data_quality.get('source_status', 'unknown')} from {data_quality.get('source', technical_data.get('source', 'unknown'))}
             
             Provide technical analysis in JSON format:
             {{
@@ -485,6 +497,34 @@ class OpenAIMarketIntelligence:
         except Exception as e:
             logger.error(f"Error in technical intelligence for {symbol}: {e}")
             return {}
+
+    @staticmethod
+    def _format_number(value: Any, decimals: int = 2) -> str:
+        if value is None:
+            return "unavailable"
+        try:
+            return f"{float(value):.{decimals}f}"
+        except (TypeError, ValueError):
+            return "unavailable"
+
+    @classmethod
+    def _format_money(cls, value: Any) -> str:
+        number = cls._format_number(value, 2)
+        return f"${number}" if number != "unavailable" else number
+
+    @staticmethod
+    def _format_integer(value: Any) -> str:
+        if value is None:
+            return "unavailable"
+        try:
+            return f"{int(value):,}"
+        except (TypeError, ValueError):
+            return "unavailable"
+
+    @classmethod
+    def _format_percent_value(cls, value: Any) -> str:
+        number = cls._format_number(value, 2)
+        return f"{number}%" if number != "unavailable" else number
     
     async def _get_market_outlook(self, symbol: str) -> Dict[str, Any]:
         """Get comprehensive market outlook using web search"""
