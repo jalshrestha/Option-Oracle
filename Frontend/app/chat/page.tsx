@@ -54,6 +54,15 @@ const starterPrompts = [
   'Risk-managed SPY setup',
 ]
 
+const visibleProgressTools = new Set([
+  'analyze_stock',
+  'get_quote',
+  'get_market_trends',
+  'portfolio_analysis',
+  'buy_option',
+  'buy_multiple_options',
+])
+
 function progressToPhase(event?: ChatProgressEvent): LoadingPhase {
   if (!event) {
     return {
@@ -83,8 +92,12 @@ function progressToPhase(event?: ChatProgressEvent): LoadingPhase {
 
 function shouldShowProgressCard(event?: ChatProgressEvent) {
   if (!event) return false
-  if (event.stage === 'tool_start' || event.stage === 'tool_complete') return true
-  if (event.stage === 'tools_selected') return Boolean(event.tools?.length)
+  if (event.stage === 'tool_start' || event.stage === 'tool_complete') {
+    return Boolean(event.tool && visibleProgressTools.has(event.tool))
+  }
+  if (event.stage === 'tools_selected') {
+    return Boolean(event.tools?.some((tool) => visibleProgressTools.has(tool)))
+  }
   if (event.stage === 'fallback') return true
   return false
 }
