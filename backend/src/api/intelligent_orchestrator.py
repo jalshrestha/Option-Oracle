@@ -4,12 +4,10 @@ Analyzes user queries and triggers appropriate AI agents with full visualization
 Replaces ALL mock data in frontend with real AI-generated analysis
 """
 import asyncio
-import re
 import json
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from loguru import logger
-import os
 import pandas as pd
 
 # Import all our AI agents
@@ -302,7 +300,8 @@ class IntelligentOrchestrator:
             symbol, 
             query, 
             agents_to_trigger, 
-            user_risk_profile
+            user_risk_profile,
+            user_context or {},
         )
         
         # Generate response based on query type
@@ -365,8 +364,10 @@ class IntelligentOrchestrator:
             agents_to_trigger.append('multi_stock')
             logger.info("🎯 Multi-stock analysis detected - will analyze multiple stocks")
         
-        # For general queries with no clear intent, default to comprehensive analysis
-        if not agents_to_trigger and max(query_scores.values()) < threshold:
+        # For general queries with no clear intent, default to comprehensive analysis.
+        # The LLM classifier can return {} when an API call fails or returns invalid
+        # JSON, so treat empty scores as unclear intent instead of crashing.
+        if not agents_to_trigger and (not query_scores or max(query_scores.values()) < threshold):
             agents_to_trigger = ['technical', 'sentiment', 'flow', 'history']
             logger.info("🔄 No clear intent detected - defaulting to comprehensive analysis")
         
@@ -378,7 +379,8 @@ class IntelligentOrchestrator:
         symbol: str,
         query: str,
         agents_to_trigger: List[str],
-        user_risk_profile: Dict[str, Any]
+        user_risk_profile: Dict[str, Any],
+        user_context: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Orchestrate the execution of selected agents"""
         
@@ -678,7 +680,7 @@ class IntelligentOrchestrator:
             # Run multi-stock analysis
             result = await self.multi_stock_agent.analyze(query, user_context)
             
-            logger.info(f"✅ Multi-stock analysis completed")
+            logger.info("✅ Multi-stock analysis completed")
             return result
             
         except Exception as e:
@@ -793,8 +795,13 @@ class IntelligentOrchestrator:
     ) -> Dict[str, Any]:
         """Generate intelligent response based on query type and analysis results"""
         
-        # Determine primary query type
-        primary_type = max(query_scores.items(), key=lambda x: x[1])[0]
+        # Determine primary query type. Empty scores mean classification failed;
+        # keep the response usable and let the default agent set drive the UI.
+        primary_type = (
+            max(query_scores.items(), key=lambda x: x[1])[0]
+            if query_scores
+            else 'comprehensive_analysis'
+        )
         
         # Base response structure
         response = {

@@ -2,8 +2,7 @@
 Technical Analysis Agent
 OpenAI Agents SDK v0.3.0 Implementation
 """
-import json
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 from .base_agent import BaseAgent
 from config.logging import get_agents_logger
@@ -240,6 +239,7 @@ Remember: You are the primary decision driver with 60% weight in the final syste
             tech_data = market_data.get('technical', {})
             quote_data = market_data.get('quote', {})
             market_conditions = market_data.get('market_conditions', {})
+            tech_data = self._reconcile_technical_with_quote(tech_data, quote_data)
             
             # Prepare the analysis prompt with real market data
             messages = [
@@ -306,6 +306,55 @@ Please provide a comprehensive technical analysis with scenario detection and we
         except Exception as e:
             logger.error(f"Technical analysis failed for {symbol}: {e}")
             return self._get_fallback_analysis(symbol)
+
+    def _reconcile_technical_with_quote(
+        self,
+        tech_data: Dict[str, Any],
+        quote_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Prevent placeholder technical prices from being mixed with live quotes."""
+        reconciled = dict(tech_data or {})
+
+        try:
+            quote_price = float(quote_data.get('price') or 0)
+            tech_price = float(reconciled.get('current_price') or 0)
+        except (TypeError, ValueError):
+            return reconciled
+
+        if quote_price <= 0:
+            return reconciled
+
+        source = str(reconciled.get('source', '')).lower()
+        has_placeholder_source = 'fallback' in source
+        has_large_dislocation = tech_price <= 0 or abs(tech_price - quote_price) / quote_price > 0.2
+
+        if not has_placeholder_source and not has_large_dislocation:
+            return reconciled
+
+        change_percent = float(quote_data.get('change_percent') or reconciled.get('change_percent') or 0)
+        volume = float(quote_data.get('volume') or reconciled.get('current_volume') or 1_000_000)
+        avg_volume = float(reconciled.get('avg_volume') or max(volume, 1))
+
+        reconciled.update({
+            'current_price': quote_price,
+            'change_percent': change_percent,
+            'ma5': quote_price,
+            'ma20': quote_price,
+            'ma50': quote_price,
+            'ma200': quote_price,
+            'vwap': quote_price,
+            'bb_upper': quote_price * 1.03,
+            'bb_middle': quote_price,
+            'bb_lower': quote_price * 0.97,
+            'bb_position': 0.5,
+            'current_volume': volume,
+            'avg_volume': avg_volume,
+            'volume_ratio': volume / avg_volume if avg_volume else 1.0,
+            'resistance': quote_price * 1.05,
+            'support': quote_price * 0.95,
+            'source': 'quote_reconciled_fallback',
+        })
+        return reconciled
     
     def _validate_analysis(self, analysis: Dict, symbol: str, market_data: Dict) -> Dict[str, Any]:
         """Validate and enhance the analysis response"""

@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Clock,
   Shield,
-  GraduationCap,
 } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 
@@ -18,7 +17,6 @@ const agents = [
   { name: 'Flow Agent', icon: TrendingUp, message: 'Evaluating options flow...' },
   { name: 'Historical Agent', icon: Clock, message: 'Reviewing historical patterns...' },
   { name: 'Risk Agent', icon: Shield, message: 'Assessing risk profile...' },
-  { name: 'Education Agent', icon: GraduationCap, message: 'Synthesizing final signal...' },
 ]
 
 interface OracleLoadingProps {

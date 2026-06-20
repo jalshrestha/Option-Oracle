@@ -7,16 +7,14 @@ for comprehensive trading signal generation
 import asyncio
 import numpy as np
 import pandas as pd
-import json
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass
 
-from .openai_sentiment_model import openai_sentiment, OpenAISentimentAnalyzer
-from .lightgbm_flow_model import lightgbm_flow_predictor, LightGBMFlowPredictor
-from .prophet_volatility_model import prophet_volatility_predictor, ProphetVolatilityPredictor
+from .openai_sentiment_model import openai_sentiment
+from .lightgbm_flow_model import lightgbm_flow_predictor
+from .prophet_volatility_model import prophet_volatility_predictor
 
-from config.settings import settings
 from config.logging import get_data_logger
 
 logger = get_data_logger()

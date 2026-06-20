@@ -119,6 +119,7 @@ OUTPUT FORMAT (JSON):
             from src.data.market_data_manager import market_data_manager
             market_data = await market_data_manager.get_comprehensive_data(symbol)
             options_data = market_data.get('options', {})
+            data_quality = self._assess_flow_data_quality(options_data)
             
             messages = [
                 {"role": "system", "content": self.system_instructions},
@@ -135,6 +136,7 @@ CURRENT MARKET:
 - Stock Price: ${options_data.get('current_price', 0):.2f}
 - Next Expiration: {options_data.get('expiration', 'N/A')}
 - Data Source: {options_data.get('source', 'unknown')}
+- Data Quality: {data_quality['source_status']}
 
 AT-THE-MONEY OPTIONS:
 - ATM Call Options: {len(options_data.get('atm_calls', []))} contracts
@@ -150,7 +152,7 @@ ATM CALL DETAILS:
 ATM PUT DETAILS:
 {self._format_options_list(options_data.get('atm_puts', [])[:3])}
 
-Provide comprehensive flow analysis with this REAL options data.
+Provide flow analysis with this options data. If data quality is fallback, unavailable, or chain-only, do not claim institutional flow, sweeps, or block trades unless the data explicitly contains them.
                 """}
             ]
             
@@ -163,7 +165,7 @@ Provide comprehensive flow analysis with this REAL options data.
             )
             analysis = self._parse_json_response(response['content'])
             
-            analysis = self._validate_flow_analysis(analysis, symbol)
+            analysis = self._validate_flow_analysis(analysis, symbol, data_quality)
             
             logger.info(f"Options flow analysis completed for {symbol}")
             return analysis
@@ -207,8 +209,9 @@ Provide comprehensive flow analysis with this REAL options data.
             'block_trades': random.randint(0, 5)
         }
     
-    def _validate_flow_analysis(self, analysis: Dict, symbol: str) -> Dict:
+    def _validate_flow_analysis(self, analysis: Dict, symbol: str, data_quality: Dict[str, Any] = None) -> Dict:
         """Validate flow analysis"""
+        data_quality = data_quality or self._fallback_data_quality()
         
         if 'flow_score' not in analysis:
             analysis['flow_score'] = 0.0
@@ -218,12 +221,62 @@ Provide comprehensive flow analysis with this REAL options data.
             analysis['unusual_activity'] = False
             
         analysis['flow_score'] = max(-1.0, min(1.0, analysis['flow_score']))
-        analysis['confidence'] = self._validate_confidence(analysis['confidence'])
+        analysis['confidence'] = min(self._validate_confidence(analysis['confidence']), data_quality['confidence_cap'])
+        if data_quality['source_status'] in {'fallback', 'unavailable'}:
+            analysis['flow_score'] = 0.0
+            analysis['unusual_activity'] = False
+            analysis['large_trades'] = []
+            analysis['flow_sentiment'] = 'neutral'
         analysis['timestamp'] = datetime.now().isoformat()
         analysis['symbol'] = symbol
         analysis['agent'] = self.name
+        analysis['data_quality'] = data_quality
+        analysis['source'] = data_quality['source']
+        analysis['is_fallback'] = data_quality['is_fallback']
         
         return analysis
+
+    def _assess_flow_data_quality(self, options_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Classify how much real flow information the options payload supports."""
+        source = str(options_data.get('source') or 'unknown')
+        total_volume = int(options_data.get('total_call_volume') or 0) + int(options_data.get('total_put_volume') or 0)
+        call_count = int(options_data.get('call_count') or len(options_data.get('atm_calls', [])) or 0)
+        put_count = int(options_data.get('put_count') or len(options_data.get('atm_puts', [])) or 0)
+
+        if options_data.get('error'):
+            return {
+                'source_status': 'unavailable',
+                'source': source,
+                'confidence_cap': 0.2,
+                'is_fallback': True,
+                'warnings': [str(options_data.get('error'))],
+            }
+        if 'fallback' in source.lower() or not options_data:
+            return self._fallback_data_quality(source)
+        if total_volume > 0 and (call_count > 0 or put_count > 0):
+            return {
+                'source_status': 'chain_only',
+                'source': source,
+                'confidence_cap': 0.45,
+                'is_fallback': False,
+                'warnings': ['Options chain volume/open interest only; sweep/block trade feed unavailable'],
+            }
+        return {
+            'source_status': 'limited',
+            'source': source,
+            'confidence_cap': 0.35,
+            'is_fallback': False,
+            'warnings': ['Limited options chain detail available'],
+        }
+
+    def _fallback_data_quality(self, source: str = 'fallback') -> Dict[str, Any]:
+        return {
+            'source_status': 'fallback',
+            'source': source,
+            'confidence_cap': 0.2,
+            'is_fallback': True,
+            'warnings': ['Options flow data unavailable'],
+        }
     
     def _get_fallback_flow(self, symbol: str) -> Dict:
         """Fallback flow analysis"""
@@ -249,7 +302,10 @@ Provide comprehensive flow analysis with this REAL options data.
             'error': 'Fallback flow analysis',
             'timestamp': datetime.now().isoformat(),
             'symbol': symbol,
-            'agent': self.name
+            'agent': self.name,
+            'data_quality': self._fallback_data_quality(),
+            'source': 'fallback',
+            'is_fallback': True,
         }
 
 

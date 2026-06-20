@@ -4,6 +4,7 @@ OpenAI Agents SDK v0.3.0 Implementation
 """
 from typing import Dict, Any
 from datetime import datetime
+import asyncio
 from .base_agent import BaseAgent
 from config.logging import get_agents_logger
 
@@ -120,8 +121,8 @@ OUTPUT FORMAT (JSON):
         try:
             logger.info(f"Starting historical pattern analysis for {symbol}")
             
-            # Mock historical data
-            mock_history = self._get_mock_historical_data(symbol)
+            current_price = await self._get_current_price(symbol)
+            mock_history = self._get_mock_historical_data(symbol, current_price)
             
             messages = [
                 {"role": "system", "content": self.system_instructions},
@@ -129,6 +130,7 @@ OUTPUT FORMAT (JSON):
 Analyze historical patterns for {symbol}:
 
 RECENT PERFORMANCE:
+- Current price: ${mock_history['current_price']:.2f}
 - 1-week return: {mock_history['week_return']:.1f}%
 - 1-month return: {mock_history['month_return']:.1f}%
 - 3-month return: {mock_history['quarter_return']:.1f}%
@@ -149,7 +151,7 @@ SIMILAR PERIODS:
 - Pattern matches found: {mock_history['similar_periods']}
 - Average outcome: {mock_history['avg_outcome']:.1f}%
 
-Provide comprehensive pattern analysis.
+Provide comprehensive pattern analysis. Keep key support/resistance levels anchored near the current price above; do not invent stale split-adjusted levels far away from the quote.
                 """}
             ]
             
@@ -160,7 +162,7 @@ Provide comprehensive pattern analysis.
             )
             analysis = self._parse_json_response(response['content'])
             
-            analysis = self._validate_pattern_analysis(analysis, symbol)
+            analysis = self._validate_pattern_analysis(analysis, symbol, current_price)
             
             logger.info(f"Historical pattern analysis completed for {symbol}")
             return analysis
@@ -169,11 +171,29 @@ Provide comprehensive pattern analysis.
             logger.error(f"Historical pattern analysis failed for {symbol}: {e}")
             return self._get_fallback_history(symbol)
     
-    def _get_mock_historical_data(self, symbol: str) -> Dict:
-        """Generate mock historical data"""
+    async def _get_current_price(self, symbol: str) -> float:
+        """Fetch a current quote so pattern levels stay near live market context."""
+        try:
+            from src.data.alpaca_client import AlpacaMarketDataClient
+
+            quote = await asyncio.wait_for(
+                AlpacaMarketDataClient().get_current_quote(symbol),
+                timeout=8,
+            )
+            return float(quote.get("price") or 0)
+        except Exception as exc:
+            logger.warning(f"Historical price context unavailable for {symbol}: {exc}")
+            return 0.0
+
+    def _get_mock_historical_data(self, symbol: str, current_price: float = 0.0) -> Dict:
+        """Generate lightweight historical context for the pattern prompt."""
         import random
+
+        if current_price <= 0:
+            current_price = 100.0
         
         return {
+            'current_price': current_price,
             'week_return': random.uniform(-10, 10),
             'month_return': random.uniform(-20, 20),
             'quarter_return': random.uniform(-30, 30),
@@ -189,7 +209,7 @@ Provide comprehensive pattern analysis.
             'avg_outcome': random.uniform(-10, 15)
         }
     
-    def _validate_pattern_analysis(self, analysis: Dict, symbol: str) -> Dict:
+    def _validate_pattern_analysis(self, analysis: Dict, symbol: str, current_price: float = 0.0) -> Dict:
         """Validate pattern analysis"""
         
         if 'pattern_score' not in analysis:
@@ -204,8 +224,28 @@ Provide comprehensive pattern analysis.
         analysis['timestamp'] = datetime.now().isoformat()
         analysis['symbol'] = symbol
         analysis['agent'] = self.name
+        self._reconcile_key_levels(analysis, current_price)
         
         return analysis
+
+    def _reconcile_key_levels(self, analysis: Dict, current_price: float) -> None:
+        """Keep historical support/resistance near the live quote."""
+        if current_price <= 0:
+            return
+
+        key_levels = analysis.setdefault('key_levels', {})
+        supports = key_levels.get('support') or []
+        resistances = key_levels.get('resistance') or []
+
+        levels = [level for level in supports + resistances if isinstance(level, (int, float))]
+        stale = not levels or any(abs(float(level) - current_price) / current_price > 0.4 for level in levels)
+        if not stale:
+            return
+
+        key_levels['support'] = [round(current_price * 0.95, 2), round(current_price * 0.90, 2)]
+        key_levels['resistance'] = [round(current_price * 1.05, 2), round(current_price * 1.10, 2)]
+        insights = analysis.setdefault('pattern_insights', [])
+        insights.insert(0, "Historical key levels were reconciled to the current quote to avoid stale price context.")
     
     def _get_fallback_history(self, symbol: str) -> Dict:
         """Fallback historical analysis"""

@@ -7,14 +7,12 @@ Eliminates JigsawStack and complex scraping dependencies
 import asyncio
 import aiohttp
 import json
-import logging
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from typing import Dict, List, Any
+from datetime import datetime
 from dataclasses import dataclass
 import re
 from src.llm.factory import create_llm_client
 
-from config.settings import settings
 from config.logging import get_data_logger
 from .alpaca_client import AlpacaMarketDataClient
 

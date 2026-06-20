@@ -11,11 +11,13 @@ import os
 # These values are never used for real API calls; all LLM calls are mocked.
 # ---------------------------------------------------------------------------
 if not os.environ.get("OPENAI_API_KEY"):
-    os.environ["OPENAI_API_KEY"] = "sk-test-placeholder-for-ci"
+    os.environ["OPENAI_API_KEY"] = "test-openai-api-key"
 if not os.environ.get("GEMINI_API_KEY"):
     os.environ["GEMINI_API_KEY"] = "test-gemini-placeholder-for-ci"
+if not os.environ.get("DEEPSEEK_API_KEY"):
+    os.environ["DEEPSEEK_API_KEY"] = "test-deepseek-placeholder-for-ci"
 if not os.environ.get("DATABASE_URL"):
-    os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@localhost:5432/options_oracle_test"
+    os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres@localhost:5432/options_oracle_test"
 if not os.environ.get("SUPABASE_URL"):
     os.environ["SUPABASE_URL"] = "https://placeholder.supabase.co"
 if not os.environ.get("SUPABASE_SERVICE_KEY"):

@@ -42,12 +42,13 @@ const AGENTS = [
   { id: 'flow', name: 'Options Flow Agent', model: 'GPT-4o-mini', weight: '10%' },
   { id: 'historical', name: 'Historical Pattern Agent', model: 'GPT-4o', weight: '20%' },
   { id: 'risk', name: 'Risk Management Agent', model: 'GPT-4o', weight: '—' },
-  { id: 'education', name: 'Education Agent', model: 'GPT-4o-mini', weight: '—' },
 ]
 
 function statusColor(status: string) {
-  if (status === 'healthy') return 'text-green-500'
-  if (status === 'degraded') return 'text-amber-500'
+  if (status === 'healthy' || status === 'configured') return 'text-green-500'
+  if (status === 'degraded' || status === 'disabled' || status === 'unconfigured') {
+    return 'text-amber-500'
+  }
   return 'text-red-500'
 }
 
@@ -63,6 +64,10 @@ export default function SystemPage() {
     () => getSystemConfig(),
     { refreshInterval: autoRefresh ? 15000 : 0 }
   )
+  const overallStatus = health?.overall_status ?? 'unknown'
+  const apiHealth = health?.components.api
+  const databaseHealth = health?.components.database
+  const externalServices = health?.components.external_services ?? {}
 
   async function handleRefresh() {
     setIsRefreshing(true)
@@ -98,7 +103,13 @@ export default function SystemPage() {
       {/* Overview cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className={`border-${health?.status === 'healthy' ? 'green' : 'amber'}-500/30 bg-gradient-to-br from-${health?.status === 'healthy' ? 'green' : 'amber'}-500/10 to-transparent`}>
+          <Card
+            className={
+              overallStatus === 'healthy'
+                ? 'border-green-500/30 bg-green-500/10'
+                : 'border-amber-500/30 bg-amber-500/10'
+            }
+          >
             <CardContent className="p-6">
               {!health ? (
                 <Skeleton className="h-12 w-full" />
@@ -106,7 +117,7 @@ export default function SystemPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="rounded-lg bg-green-500/20 p-2">
-                      {health.status === 'healthy' ? (
+                      {overallStatus === 'healthy' ? (
                         <CheckCircle className="h-5 w-5 text-green-500" />
                       ) : (
                         <AlertCircle className="h-5 w-5 text-amber-500" />
@@ -114,14 +125,14 @@ export default function SystemPage() {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">System Status</p>
-                      <p className={`text-xl font-bold capitalize ${statusColor(health.status)}`}>
-                        {health.status}
+                      <p className={`text-xl font-bold capitalize ${statusColor(overallStatus)}`}>
+                        {overallStatus}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-bold">{health.uptime?.toFixed(1) ?? '—'}s</p>
-                    <p className="text-xs text-muted-foreground">Uptime</p>
+                    <p className="text-2xl font-bold">{health.version ?? '—'}</p>
+                    <p className="text-xs text-muted-foreground">Version</p>
                   </div>
                 </div>
               )}
@@ -219,7 +230,7 @@ export default function SystemPage() {
                 AI Agent Architecture
               </CardTitle>
               <CardDescription>
-                Six specialized agents that collaborate on every analysis
+                Five specialized agents that collaborate on every analysis
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -267,13 +278,17 @@ export default function SystemPage() {
                 <CardContent className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Status</span>
-                    <span className={`text-sm font-medium capitalize ${statusColor(health.database?.status ?? 'unhealthy')}`}>
-                      {health.database?.status ?? 'unknown'}
+                    <span className={`text-sm font-medium capitalize ${statusColor(databaseHealth?.status ?? 'unhealthy')}`}>
+                      {databaseHealth?.status ?? 'unknown'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Response Time</span>
-                    <span className="text-sm font-mono">{health.database?.response_time ?? '—'}ms</span>
+                    <span className="text-sm font-mono">{databaseHealth?.response_time_ms ?? '—'}ms</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Connection Pool</span>
+                    <span className="text-sm font-mono">{databaseHealth?.connection_pool ?? '—'}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -283,10 +298,12 @@ export default function SystemPage() {
                   <CardTitle>External Services</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {Object.entries(health.external_services ?? {}).map(([svc, status]) => (
+                  {Object.entries(externalServices).map(([svc, service]) => (
                     <div key={svc} className="flex justify-between">
                       <span className="text-sm text-muted-foreground capitalize">{svc}</span>
-                      <span className={`text-sm font-medium capitalize ${statusColor(status)}`}>{status}</span>
+                      <span className={`text-sm font-medium capitalize ${statusColor(service.status)}`}>
+                        {service.status}
+                      </span>
                     </div>
                   ))}
                 </CardContent>
@@ -299,11 +316,11 @@ export default function SystemPage() {
                 <CardContent className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Response Time</span>
-                    <span className="text-sm font-mono">{health.response_time?.toFixed(0) ?? '—'}ms</span>
+                    <span className="text-sm font-mono">{apiHealth?.response_time_ms?.toFixed(0) ?? '—'}ms</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Active Connections</span>
-                    <span className="text-sm font-mono">{health.active_connections ?? 0}</span>
+                    <span className="text-sm font-mono">{apiHealth?.active_connections ?? 0}</span>
                   </div>
                   {metrics && (
                     <div className="flex justify-between">

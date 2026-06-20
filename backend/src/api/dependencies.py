@@ -3,6 +3,7 @@ FastAPI dependency providers — DB session, services, session validation, and r
 """
 import functools
 import math
+import secrets
 import time
 import uuid
 from threading import Lock
@@ -17,13 +18,28 @@ from config.logging import get_api_logger
 from config.settings import settings
 from src.exceptions import RateLimitError
 from src.repositories.positions import PositionRepository
-from src.repositories.sessions import SessionRepository
+from src.repositories.trade_recommendations import TradeRecommendationRepository
 from src.repositories.signals import TradingSignalRepository
 from src.services.analysis_service import AnalysisService
 from src.services.portfolio_service import PortfolioService
 from src.services.trading_service import TradingService
 
 logger = get_api_logger()
+
+_orchestrator: Any = None
+
+
+def set_orchestrator(orchestrator: Any) -> None:
+    """Register the app-wide intelligent orchestrator instance."""
+    global _orchestrator
+    _orchestrator = orchestrator
+
+
+def get_orchestrator() -> Any:
+    """Return the app-wide intelligent orchestrator instance."""
+    if _orchestrator is None:
+        raise HTTPException(status_code=503, detail="Orchestrator is not initialized")
+    return _orchestrator
 
 # ---------------------------------------------------------------------------
 # Rate limiting — per-IP, fixed 1-minute window via TTLCache
@@ -109,6 +125,19 @@ async def get_current_session(
     }
 
 
+async def require_admin_api_token(
+    x_admin_token: Optional[str] = Header(None),
+) -> None:
+    """Require an out-of-band admin token for system-level write operations."""
+    if not settings.admin_api_token:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin API token is not configured",
+        )
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, settings.admin_api_token):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+
+
 # ---------------------------------------------------------------------------
 # Service provider functions
 # ---------------------------------------------------------------------------
@@ -121,7 +150,7 @@ def get_analysis_service(db: AsyncSession = Depends(get_db)) -> AnalysisService:
 
 
 def get_trading_service(db: AsyncSession = Depends(get_db)) -> TradingService:
-    return TradingService(PositionRepository(db))
+    return TradingService(PositionRepository(db), TradeRecommendationRepository(db))
 
 
 def get_portfolio_service(db: AsyncSession = Depends(get_db)) -> PortfolioService:

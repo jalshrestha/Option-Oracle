@@ -6,11 +6,10 @@ Replaces FinBERT with GPT-4o-mini for better integration and performance
 import asyncio
 import json
 import re
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
 
-from config.settings import settings
 from config.logging import get_data_logger
 from src.llm.factory import create_llm_client
 

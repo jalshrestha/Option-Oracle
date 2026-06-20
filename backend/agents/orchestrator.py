@@ -3,10 +3,8 @@ Neural Options Oracle++ Master Orchestrator
 OpenAI Agents SDK v0.3.0 Implementation
 """
 import asyncio
-import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from datetime import datetime
-from config.settings import settings
 from config.logging import get_agents_logger
 from src.llm.factory import create_llm_client
 from config.database import AsyncSessionLocal
@@ -146,6 +144,13 @@ class OptionsOracleOrchestrator:
         educational_content: Any,
     ) -> Dict[str, Any]:
         """Assemble the final analysis dict from all pipeline outputs."""
+        data_quality = self._summarize_data_quality(agent_results)
+        trade_decision = self._build_trade_decision(
+            signal,
+            strike_recommendations,
+            agent_results,
+            data_quality,
+        )
         return {
             'symbol': symbol,
             'timestamp': datetime.now().isoformat(),
@@ -156,10 +161,124 @@ class OptionsOracleOrchestrator:
             'decision_score': decision_score,
             'signal': signal,
             'strike_recommendations': strike_recommendations,
+            'trade_decision': trade_decision,
+            'data_quality': data_quality,
             'educational_content': educational_content,
             'confidence': self._calculate_overall_confidence(agent_results),
             'risk_profile': user_risk_profile,
         }
+
+    def _summarize_data_quality(self, agent_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Build a compact data-quality summary used by decision and chat layers."""
+        agents = {}
+        weak_agents = []
+        limited_agents = []
+        for name, result in agent_results.items():
+            quality = result.get('data_quality') or {
+                'source_status': 'derived',
+                'source': result.get('source', 'unknown'),
+                'confidence_cap': result.get('confidence', 0.5),
+                'is_fallback': bool(result.get('is_fallback') or result.get('error')),
+                'warnings': [],
+            }
+            status = quality.get('source_status', 'unknown')
+            agents[name] = quality
+            if status in {'fallback', 'unavailable'} or quality.get('is_fallback'):
+                weak_agents.append(name)
+            elif status in {'limited', 'chain_only'}:
+                limited_agents.append(name)
+
+        if len(weak_agents) >= 2:
+            overall = 'weak'
+        elif weak_agents or limited_agents:
+            overall = 'partial'
+        else:
+            overall = 'usable'
+
+        return {
+            'overall': overall,
+            'agents': agents,
+            'warnings': [
+                f"{name} data quality is {agents[name].get('source_status', 'unknown')}"
+                for name in [*weak_agents, *limited_agents]
+            ],
+        }
+
+    def _build_trade_decision(
+        self,
+        signal: Dict[str, Any],
+        strike_recommendations: Any,
+        agent_results: Dict[str, Any],
+        data_quality: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Convert agent output into a risk-aware trade/no-trade decision."""
+        direction = signal.get('direction', 'HOLD')
+        confidence = float(signal.get('confidence') or 0.0)
+        current_price = float(signal.get('current_price') or 0.0)
+        decision = 'NO_TRADE'
+        rationale = []
+
+        if direction in {'BUY', 'STRONG_BUY'}:
+            bias = 'bullish'
+        elif direction in {'SELL', 'STRONG_SELL'}:
+            bias = 'bearish'
+        else:
+            bias = 'neutral'
+            rationale.append('Signal is neutral.')
+
+        if confidence < 0.35:
+            rationale.append('Signal confidence is below the minimum trade threshold.')
+        if data_quality.get('overall') == 'weak':
+            rationale.append('Data quality is too weak for a trade recommendation.')
+        if not strike_recommendations:
+            rationale.append('No risk-managed strike recommendation is available.')
+
+        if bias != 'neutral' and confidence >= 0.35 and data_quality.get('overall') != 'weak' and strike_recommendations:
+            decision = 'PAPER_TRADE_CANDIDATE'
+            rationale.append('Directional signal and risk recommendation are sufficient for paper review.')
+        elif bias != 'neutral' and data_quality.get('overall') == 'partial':
+            decision = 'WATCHLIST'
+
+        primary_strike = strike_recommendations[0] if isinstance(strike_recommendations, list) and strike_recommendations else {}
+        stop_loss = None
+        target = None
+        if current_price > 0:
+            if bias == 'bullish':
+                stop_loss = round(current_price * 0.97, 2)
+                target = round(current_price * 1.06, 2)
+            elif bias == 'bearish':
+                stop_loss = round(current_price * 1.03, 2)
+                target = round(current_price * 0.94, 2)
+
+        max_loss = primary_strike.get('max_loss')
+        max_gain = primary_strike.get('max_gain')
+        reward_risk = None
+        if isinstance(max_loss, (int, float)) and max_loss > 0 and isinstance(max_gain, (int, float)):
+            reward_risk = round(max_gain / max_loss, 2)
+
+        return {
+            'decision': decision,
+            'direction': bias,
+            'confidence': confidence,
+            'entry_trigger': self._entry_trigger_text(bias, current_price),
+            'invalidation': stop_loss,
+            'target': target,
+            'position_size': {
+                'contracts': 1 if decision == 'PAPER_TRADE_CANDIDATE' else 0,
+                'note': 'Paper review only; live execution requires explicit confirmation.',
+            },
+            'max_loss': max_loss,
+            'reward_risk': reward_risk,
+            'data_quality': data_quality.get('overall'),
+            'rationale': rationale,
+        }
+
+    def _entry_trigger_text(self, bias: str, current_price: float) -> str:
+        if current_price <= 0 or bias == 'neutral':
+            return 'Wait for a clear directional setup.'
+        if bias == 'bullish':
+            return f'Consider only above ${current_price * 1.01:.2f} with confirmation.'
+        return f'Consider only below ${current_price * 0.99:.2f} with confirmation.'
     
     async def execute_buy_request(
         self, 
@@ -226,8 +345,6 @@ class OptionsOracleOrchestrator:
         try:
             tech_data = agent_results.get('technical', {})
             sentiment_data = agent_results.get('sentiment', {})
-            flow_data = agent_results.get('flow', {})
-            
             # Check technical indicators for scenario detection
             if 'scenario' in tech_data:
                 return tech_data['scenario']
@@ -363,11 +480,17 @@ class OptionsOracleOrchestrator:
             strength = 'weak'
         
         signal = {
+            'symbol': symbol,
             'direction': direction,
             'strength': strength,
             'decision_score': decision_score,
             'strategy_type': strategy_type,
             'market_scenario': scenario,
+            'current_price': (
+                agent_results.get('technical', {})
+                .get('market_data_snapshot', {})
+                .get('current_price', 0)
+            ),
             'confidence': abs_score,
             'reasoning': self._generate_signal_reasoning(agent_results, decision_score)
         }

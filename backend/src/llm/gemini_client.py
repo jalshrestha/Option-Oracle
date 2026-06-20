@@ -11,7 +11,6 @@ Tool format conversion:
   Gemini:  genai.protos.Tool(function_declarations=[genai.protos.FunctionDeclaration(...)])
 """
 import asyncio
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.llm.base import LLMClient, ToolCall, ToolCallResult
@@ -66,7 +65,6 @@ def _openai_tools_to_gemini(tools: List[Dict[str, Any]]) -> List[Any]:
     Gemini format:
       genai.protos.Tool(function_declarations=[FunctionDeclaration(...)])
     """
-    import google.generativeai as genai
     import google.generativeai.protos as protos
 
     declarations = []

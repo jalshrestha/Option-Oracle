@@ -2,12 +2,10 @@
 Options Buy Agent
 Analyzes and executes single option purchases with real Alpaca trading
 """
-import asyncio
 import json
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, List
+from datetime import datetime
 from src.data.alpaca_client import AlpacaMarketDataClient
-from config.settings import settings
 from config.logging import get_agents_logger
 from src.llm.factory import create_llm_client
 

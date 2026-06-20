@@ -3,26 +3,25 @@ LightGBM Options Flow Predictor
 High-performance gradient boosting for options flow analysis and unusual activity detection
 """
 
-import asyncio
 import numpy as np
-import pandas as pd
-import json
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List, Any, Tuple
+from datetime import datetime
 from dataclasses import dataclass
 
 try:
     import lightgbm as lgb
     LIGHTGBM_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError) as exc:
     LIGHTGBM_AVAILABLE = False
     lgb = None
+    LIGHTGBM_IMPORT_ERROR = exc
+else:
+    LIGHTGBM_IMPORT_ERROR = None
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score
 
-from config.settings import settings
 from config.logging import get_data_logger
 
 logger = get_data_logger()
@@ -75,7 +74,7 @@ class LightGBMFlowPredictor:
         }
         
         if not LIGHTGBM_AVAILABLE:
-            logger.warning("LightGBM not available, using fallback predictor")
+            logger.warning(f"LightGBM not available, using fallback predictor: {LIGHTGBM_IMPORT_ERROR}")
         else:
             logger.info("LightGBM Flow Predictor initialized")
     

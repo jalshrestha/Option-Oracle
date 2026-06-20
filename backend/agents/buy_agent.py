@@ -3,8 +3,7 @@ Buy Agent for Neural Options Oracle++
 Intelligent trade execution based on AI analysis and decision engine signals
 """
 import asyncio
-import json
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from config.logging import get_agents_logger
@@ -167,8 +166,6 @@ class BuyAgent(BaseAgent):
             # Extract signal information
             direction = decision_signal.get('direction', 'HOLD')
             confidence = decision_signal.get('confidence', 0.5)
-            strategy_type = decision_signal.get('strategy_type', 'neutral')
-            
             # Skip if signal is HOLD or confidence too low
             if direction == 'HOLD' or confidence < 0.3:
                 logger.info(f"Signal for {symbol} is {direction} with {confidence:.2f} confidence - no buy recommendation")

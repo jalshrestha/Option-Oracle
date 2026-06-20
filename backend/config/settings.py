@@ -29,18 +29,20 @@ class Settings(BaseSettings):
     # Database
     # ------------------------------------------------------------------
     database_url: str  # required — set DATABASE_URL env var
+    redis_url: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Auth / JWT
     # ------------------------------------------------------------------
     jwt_secret_key: str  # required — set JWT_SECRET_KEY env var (min 32 chars)
+    admin_api_token: Optional[str] = None
     allowed_hosts: List[str] = ["localhost", "127.0.0.1", "0.0.0.0"]
 
     # ------------------------------------------------------------------
     # LLM Provider Selection
     # Switch between providers by setting LLM_PROVIDER in .env
     # ------------------------------------------------------------------
-    llm_provider: Literal["openai", "gemini"] = "openai"
+    llm_provider: Literal["openai", "gemini", "deepseek"] = "openai"
 
     # OpenAI — required when llm_provider="openai"
     openai_api_key: Optional[str] = None
@@ -52,6 +54,12 @@ class Settings(BaseSettings):
     gemini_model_large: str = "gemini-2.0-flash"
     gemini_model_small: str = "gemini-2.0-flash-lite"
 
+    # DeepSeek — required when llm_provider="deepseek"
+    deepseek_api_key: Optional[str] = None
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model_large: str = "deepseek-v4-pro"
+    deepseek_model_small: str = "deepseek-v4-flash"
+
     # ------------------------------------------------------------------
     # Optional external APIs
     # ------------------------------------------------------------------
@@ -61,6 +69,16 @@ class Settings(BaseSettings):
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
     stocktwits_access_token: Optional[str] = None
     news_api_key: Optional[str] = None
+
+    # ------------------------------------------------------------------
+    # Optional ingestion layer, ported from Sajan architecture
+    # ------------------------------------------------------------------
+    ingestion_kafka_enabled: bool = False
+    ingestion_dask_enabled: bool = False
+    kafka_bootstrap_servers: str = "kafka:9092"
+    kafka_consumer_group: str = "option-oracle"
+    dask_scheduler_address: str = "tcp://dask-scheduler:8786"
+    dask_n_workers: int = 2
 
     # ------------------------------------------------------------------
     # Application
@@ -92,6 +110,7 @@ class Settings(BaseSettings):
     max_concurrent_analysis: int = 10
     default_risk_profile: str = "moderate"
     paper_trading_balance: float = 100_000.0
+    live_trading_enabled: bool = False
 
     # ------------------------------------------------------------------
     # Validators
@@ -112,16 +131,16 @@ class Settings(BaseSettings):
         if not v.startswith("postgresql+asyncpg://"):
             raise ValueError(
                 "DATABASE_URL must start with 'postgresql+asyncpg://' or 'postgresql://'. "
-                "Example: postgresql+asyncpg://user:pass@localhost:5432/option_oracle"
+                "Example: postgresql+asyncpg://user@localhost:5432/option_oracle"
             )
         return v
 
     @field_validator("openai_api_key", mode="before")
     @classmethod
     def validate_openai_key_format(cls, v: Optional[str]) -> Optional[str]:
-        if v and not v.startswith("sk-"):
+        if v and not (v.startswith("sk-") or v.startswith("test-")):
             raise ValueError(
-                "OPENAI_API_KEY must start with 'sk-'. "
+                "OPENAI_API_KEY must start with 'sk-' or use a 'test-' placeholder. "
                 "Get your key from https://platform.openai.com/api-keys"
             )
         return v or None
@@ -145,6 +164,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 "GEMINI_API_KEY is required when LLM_PROVIDER=gemini. "
                 "Get your key from https://aistudio.google.com/app/apikey"
+            )
+        if self.llm_provider == "deepseek" and not self.deepseek_api_key:
+            raise ValueError(
+                "DEEPSEEK_API_KEY is required when LLM_PROVIDER=deepseek. "
+                "Get your key from https://platform.deepseek.com/api_keys"
             )
         return self
 

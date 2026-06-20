@@ -1,6 +1,6 @@
 """Analytics and system config ORM models."""
 import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Optional
 
 from sqlalchemy import Date, Float, Integer, String, Text

@@ -5,13 +5,12 @@ Centralized market data coordination and caching with OpenAI intelligence
 import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-import json
 
 from .alpaca_client import AlpacaMarketDataClient
 from .openai_only_orchestrator import OpenAIMarketIntelligence
 from config.database import AsyncSessionLocal
 from config.logging import get_data_logger
-from config.settings import settings
+from src.data import redis_cache
 
 logger = get_data_logger()
 
@@ -207,7 +206,12 @@ class MarketDataManager:
             return 'medium'
     
     async def _get_cached_data(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get cached market data from PostgreSQL."""
+        """Get cached market data from Redis first, then PostgreSQL."""
+        redis_key = f"market_data:{symbol.upper()}"
+        cached = await redis_cache.get_json(redis_key)
+        if cached:
+            return cached
+
         try:
             from sqlalchemy import select
             from src.models.cache import MarketDataCache
@@ -224,6 +228,7 @@ class MarketDataManager:
                 if last_updated.tzinfo is None:
                     last_updated = last_updated.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) - last_updated < timedelta(seconds=self.cache_ttl):
+                    await redis_cache.set_json(redis_key, row.price_data, self.cache_ttl)
                     return row.price_data
 
         except Exception as e:
@@ -232,13 +237,18 @@ class MarketDataManager:
         return None
 
     async def _cache_data(self, symbol: str, data: Dict[str, Any]) -> None:
-        """Cache market data in PostgreSQL."""
+        """Cache market data in Redis and PostgreSQL."""
         try:
             from datetime import timezone
             from sqlalchemy.dialects.postgresql import insert as pg_insert
             from src.models.cache import MarketDataCache
 
             serializable_data = self._make_json_serializable(data)
+            await redis_cache.set_json(
+                f"market_data:{symbol.upper()}",
+                serializable_data,
+                self.cache_ttl,
+            )
             now = datetime.now(timezone.utc)
 
             async with AsyncSessionLocal() as db:
@@ -284,7 +294,12 @@ class MarketDataManager:
             return data
     
     async def _get_cached_ai_analysis(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get cached AI analysis (15-minute TTL)."""
+        """Get cached AI analysis from Redis first, then PostgreSQL."""
+        redis_key = f"ai_analysis:{symbol.upper()}"
+        cached = await redis_cache.get_json(redis_key)
+        if cached:
+            return cached
+
         from datetime import timezone
         from sqlalchemy import select
         from src.models.cache import AiAnalysisCache
@@ -300,6 +315,7 @@ class MarketDataManager:
                     if cache_time.tzinfo is None:
                         cache_time = cache_time.replace(tzinfo=timezone.utc)
                     if datetime.now(timezone.utc) - cache_time < timedelta(seconds=900):
+                        await redis_cache.set_json(redis_key, row.analysis_data, 900)
                         return row.analysis_data
         except Exception as e:
             logger.debug(f"AI analysis cache read failed for {symbol}: {e}")
@@ -307,22 +323,28 @@ class MarketDataManager:
         return None
 
     async def _cache_ai_analysis(self, symbol: str, analysis: Dict[str, Any]) -> None:
-        """Cache AI analysis results."""
+        """Cache AI analysis results in Redis and PostgreSQL."""
         from datetime import timezone
         from sqlalchemy.dialects.postgresql import insert as pg_insert
         from src.models.cache import AiAnalysisCache
 
         try:
+            serializable_analysis = self._make_json_serializable(analysis)
+            await redis_cache.set_json(
+                f"ai_analysis:{symbol.upper()}",
+                serializable_analysis,
+                900,
+            )
             confidence = analysis.get('ai_intelligence', {}).get('confidence_score')
             stmt = pg_insert(AiAnalysisCache).values(
                 symbol=symbol,
-                analysis_data=analysis,
+                analysis_data=serializable_analysis,
                 confidence_score=confidence,
                 last_updated=datetime.now(timezone.utc),
             ).on_conflict_do_update(
                 index_elements=["symbol"],
                 set_={
-                    "analysis_data": analysis,
+                    "analysis_data": serializable_analysis,
                     "confidence_score": confidence,
                     "last_updated": datetime.now(timezone.utc),
                 },

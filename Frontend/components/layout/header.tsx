@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Sun, Moon, Bell, Shield, LogIn, LogOut, User } from 'lucide-react'
+import { Search, Sun, Moon, Bell, LogIn, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -39,7 +39,7 @@ export function Header() {
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
-  const healthStatus = health?.status || 'healthy'
+  const healthStatus = health?.overall_status || 'healthy'
   const statusColor = healthStatus === 'healthy' 
     ? 'bg-green-500' 
     : healthStatus === 'degraded' 
@@ -48,7 +48,7 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-6 backdrop-blur-sm">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/70 bg-background/72 px-4 backdrop-blur-xl lg:px-6">
         {/* Left - Logo (mobile) */}
         <div className="flex items-center gap-4 lg:hidden">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg brand-gradient">
@@ -73,7 +73,7 @@ export function Header() {
         <div className="hidden flex-1 justify-center px-4 md:flex lg:px-12">
           <button
             onClick={() => setCommandOpen(true)}
-            className="group flex h-10 w-full max-w-md items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted"
+            className="group flex h-10 w-full max-w-xl items-center gap-3 rounded-lg border border-border/80 bg-card/70 px-4 text-sm text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-card"
           >
             <Search className="h-4 w-4" />
             <span className="flex-1 text-left">Search symbols or ask Oracle...</span>
@@ -112,7 +112,7 @@ export function Header() {
           )}
 
           {/* System Status */}
-          <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5">
+          <div className="flex items-center gap-2 rounded-lg border border-border/80 bg-card/60 px-3 py-1.5">
             <div className={cn('h-2 w-2 rounded-full', statusColor)} />
             <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
               {healthStatus === 'healthy' ? 'Online' : healthStatus}
@@ -120,7 +120,7 @@ export function Header() {
           </div>
 
           {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative h-9 w-9">
+          <Button variant="ghost" size="icon" className="relative h-9 w-9 text-muted-foreground hover:text-foreground">
             <Bell className="h-4 w-4" />
           </Button>
 

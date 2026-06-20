@@ -7,6 +7,7 @@ Usage:
     client = create_llm_client("large")   # uses settings.llm_provider
     client = create_llm_client("small")   # cost-optimized model
     client = create_llm_client("large", provider="gemini")  # explicit override
+    client = create_llm_client("small", provider="deepseek")
 """
 from typing import Optional
 
@@ -23,7 +24,7 @@ def create_llm_client(
     Args:
         model_size: "large" for complex analysis (gpt-4o / gemini-2.0-flash)
                     "small" for cost-optimized tasks (gpt-4o-mini / gemini-2.0-flash-lite)
-        provider:   Override the provider from settings ("openai" or "gemini").
+        provider:   Override the provider from settings ("openai", "gemini", or "deepseek").
                     Defaults to settings.llm_provider.
 
     Returns:
@@ -52,8 +53,20 @@ def create_llm_client(
         )
         return GeminiLLMClient(api_key=settings.gemini_api_key, model=model)
 
+    elif resolved_provider == "deepseek":
+        from src.llm.deepseek_client import DeepSeekLLMClient
+        model = (
+            settings.deepseek_model_large if model_size == "large"
+            else settings.deepseek_model_small
+        )
+        return DeepSeekLLMClient(
+            api_key=settings.deepseek_api_key,
+            model=model,
+            base_url=settings.deepseek_base_url,
+        )
+
     else:
         raise ValueError(
             f"Unknown LLM provider: '{resolved_provider}'. "
-            "Set LLM_PROVIDER=openai or LLM_PROVIDER=gemini in your .env"
+            "Set LLM_PROVIDER=openai, LLM_PROVIDER=gemini, or LLM_PROVIDER=deepseek in your .env"
         )

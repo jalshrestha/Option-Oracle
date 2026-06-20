@@ -1,19 +1,32 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
     container_name: option_oracle_db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-oracle}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-option_oracle}
+      POSTGRES_USER: oracle
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: option_oracle
     ports:
       - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U oracle -d option_oracle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: option_oracle_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,12 +41,16 @@ services:
       - ./backend/.env
     environment:
       # Override localhost URL from .env — inside Docker the DB is reachable via service name
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oracle}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-option_oracle}
+      DATABASE_URL: postgresql+asyncpg://oracle@postgres:5432/option_oracle
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./backend/logs:/app/logs
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -43,12 +60,76 @@ services:
       retries: 3
       start_period: 40s
 
-  # frontend:
-  #   build: ./frontend
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     - backend
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: option_oracle_zookeeper
+    profiles: ["ingestion"]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: option_oracle_kafka
+    profiles: ["ingestion"]
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  dask-scheduler:
+    image: ghcr.io/dask/dask:latest
+    container_name: option_oracle_dask_scheduler
+    profiles: ["ingestion"]
+    command: dask scheduler
+    ports:
+      - "8786:8786"
+      - "8787:8787"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8787', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dask-worker:
+    image: ghcr.io/dask/dask:latest
+    container_name: option_oracle_dask_worker
+    profiles: ["ingestion"]
+    command: dask worker tcp://dask-scheduler:8786 --nthreads 4 --memory-limit 2GB
+    depends_on:
+      - dask-scheduler
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./Frontend
+    container_name: option_oracle_frontend
+    profiles: ["frontend"]
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:
