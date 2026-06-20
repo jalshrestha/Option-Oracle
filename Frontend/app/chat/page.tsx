@@ -488,7 +488,7 @@ export default function ChatPage() {
 
     const handlePointerDown = (event: PointerEvent) => {
       if (!historyMenuRef.current?.contains(event.target as Node)) {
-        setHistoryOpen(false)
+        window.setTimeout(() => setHistoryOpen(false), 0)
       }
     }
 
@@ -652,7 +652,6 @@ export default function ChatPage() {
                 initial={{ opacity: 0, y: -6, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                onPointerDown={(event) => event.stopPropagation()}
                 className="fixed right-6 top-16 z-50 hidden w-[360px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b1018] shadow-[0_24px_80px_rgba(0,0,0,0.46)] md:block"
               >
                 <div className="flex items-center justify-between border-b border-white/10 px-3 py-3">
@@ -679,8 +678,7 @@ export default function ChatPage() {
                         <button
                           type="button"
                           key={thread.id}
-                          onPointerDown={(event) => {
-                            event.preventDefault()
+                          onClick={(event) => {
                             event.stopPropagation()
                             void handleOpenThread(thread.id)
                           }}
