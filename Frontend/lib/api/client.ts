@@ -95,6 +95,10 @@ async function attemptRefresh(): Promise<string | null> {
   return data.access_token
 }
 
+export async function refreshAuthToken(): Promise<string | null> {
+  return attemptRefresh()
+}
+
 async function getValidAccessToken(): Promise<string | null> {
   const token = getAccessToken()
   if (!token) return null
